@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {BaseScript} from "./BaseScript.sol";
-import "../../src/ZKNOX_epervier.sol";
+import "../src/ZKNOX_epervier.sol";
 
 import {console} from "forge-std/Test.sol";
 //deploy the precomputed tables for psirev and psiInvrev

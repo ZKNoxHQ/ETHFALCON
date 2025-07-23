@@ -255,12 +255,6 @@ function shake_permute(uint8[200] memory buf, uint64[25] memory state)
     return (buffer, state); //zeroization of buf external to this function
 }
 
-function display_state(uint64[25] memory state) pure {
-    for (uint256 i = 0; i < 25; i++) {
-        // console.log("%x", state[i]);
-    }
-}
-
 function shake_pad(ctx_shake memory ctx) pure returns (ctx_shake memory ctxout) {
     ctx.buff[ctx.i] ^= 0x1f;
     ctx.buff[_RATE - 1] ^= 0x80;
@@ -280,6 +274,5 @@ function shake_digest(ctx_shake memory ctx, uint256 size8) pure returns (bytes m
 
         ctx.i = 0;
     }
-    //display_state(ctx.state);
     (, output) = shake_squeeze(ctx, size8);
 }
