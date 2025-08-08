@@ -1,5 +1,6 @@
 import unittest
 
+from blake2s_prng import Blake2sPRNG
 from falcon import PublicKey, SecretKey
 from keccak_prng import KeccakPRNG
 from keccaxof import KeccaXOF
@@ -106,7 +107,7 @@ class TestFalcon(unittest.TestCase):
         message = b"abc"
 
         d = {True: "OK    ", False: "Not OK"}
-        for (xof, xof_str) in [(SHAKE, 'SHAKE'), (KeccaXOF, 'KeccaXOF'), (KeccakPRNG, 'KeccakPRNG')]:
+        for (xof, xof_str) in [(SHAKE, 'SHAKE'), (KeccaXOF, 'KeccaXOF'), (KeccakPRNG, 'KeccakPRNG'), (Blake2sPRNG, 'Blake2sPRNG')]:
             start = timer()
             for i in range(iterations):
                 sig = sk.sign(message, xof=xof)
@@ -132,7 +133,7 @@ class TestFalcon(unittest.TestCase):
         pk = PublicKey(n, sk.h)
         message = b"I like to change hash functions"
         d = {True: "OK    ", False: "Not OK"}
-        for (xof, xof_str) in [(SHAKE, 'SHAKE'), (KeccaXOF, 'KeccaXOF'), (KeccakPRNG, 'KeccakPRNG')]:
+        for (xof, xof_str) in [(SHAKE, 'SHAKE'), (KeccaXOF, 'KeccaXOF'), (KeccakPRNG, 'KeccakPRNG'), (Blake2sPRNG, 'Blake2sPRNG')]:
             sig = sk.sign(message, xof=xof)
             start = timer()
             for i in range(iterations):

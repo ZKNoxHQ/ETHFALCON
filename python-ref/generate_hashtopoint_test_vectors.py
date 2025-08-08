@@ -1,6 +1,8 @@
 from falcon import SecretKey
 from shake import SHAKE
 from keccak_prng import KeccakPRNG
+from blake2s_prng import Blake2sPRNG
+from generate_falcon_test_vectors import list_of_messages
 
 n = 512
 # An example of secret key
@@ -19,13 +21,20 @@ sk = SecretKey(n, [f, g, F, G])
 shake = SHAKE.new(b'')
 shake.flip()
 
-for XOF in [KeccakPRNG, SHAKE]:
+for XOF in [KeccakPRNG, SHAKE, Blake2sPRNG]:
     if XOF == KeccakPRNG:
         hash_type = "RIP"
     elif XOF == SHAKE:
         hash_type = "NIST"
+    elif XOF == Blake2sPRNG:
+        hash_type = "ZK"
 
-    file = open("../test/ZKNOXHashToPoint" + hash_type + "Vectors.t.sol", 'w')
+    if hash_type == "ZK":
+        # we don't generate a sol file for now as we do not have Blake2s in solidty.
+        file = open("../test/ZKNOXHashToPointZKVectors.t", 'w')
+    else:
+        file = open("../test/ZKNOXHashToPoint" +
+                    hash_type + "Vectors.t.sol", 'w')
 
     header = """
     // code generated using pythonref/generate_hashtopoint_test_vectors.py.
@@ -37,14 +46,15 @@ for XOF in [KeccakPRNG, SHAKE]:
     header += "contract HashToPoint{}Test is Test {{\n".format(hash_type)
     file.write(header)
 
-    for (i, message) in enumerate(["My name is Renaud", "My name is Simon", "My name is Nicolas", "We are ZKNox"]):
+    for (i, message) in enumerate(list_of_messages):
         salt = shake.read(40)
         hash = sk.hash_to_point(sk.n, message.encode(), salt, xof=XOF)
 
         file.write("\tfunction testVector{}() public pure {{\n".format(i))
         file.write("\t\tbytes memory salt = \"{}\"; \n".format(
             "".join(f"\\x{b:02x}" for b in salt)))
-        file.write("\t\tbytes memory message = \"{}\";\n".format(message))
+        file.write("\t\tbytes memory message = \"{}\";\n".format(
+            "".join(f"\\x{b:02x}" for b in message.encode())))
         file.write("\t\t// forgefmt: disable-next-line\n")
 
         file.write("\t\tuint256[512] memory expected_hash = [uint256({}), {}];\n".format(

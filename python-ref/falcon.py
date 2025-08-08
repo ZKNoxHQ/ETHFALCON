@@ -11,6 +11,8 @@ from ntrugen import ntru_gen
 from encoding import compress, decompress
 from keccak_prng import KeccakPRNG
 from shake import SHAKE
+from blake2s_prng import Blake2sPRNG
+from hashlib import blake2s
 from polyntt.poly import Poly
 from polyntt.ntt_iterative import NTTIterative
 # Randomness
@@ -190,6 +192,9 @@ def hash_to_point(n, message, salt, xof=KeccakPRNG):
         raise ValueError("The modulus is too large")
 
     k = (1 << 16) // q
+    if xof == Blake2sPRNG:
+        # /!\ hashing salt to get only 32 bytes (for cairo implementation)
+        salt = blake2s(salt).digest()
     if xof != SHAKE:
         # /!\ Reversed compared to NIST
         salt, message = message, salt

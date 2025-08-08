@@ -1,6 +1,7 @@
 from falcon import HEAD_LEN, SALT_LEN, decompress, SecretKey, PublicKey
 from common import falcon_compact, q
 from keccak_prng import KeccakPRNG
+from blake2s_prng import Blake2sPRNG
 from polyntt.poly import Poly
 from shake import SHAKE
 
@@ -53,11 +54,21 @@ contract ZKNOX_FalconTest is Test {{
 """.format(is_eth, is_eth, is_eth)
 
 
-for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
-    file = open(
-        "../test/ZKNOX_{}falcon.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
+for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST'), (Blake2sPRNG, 'ZK')]:
+    if hash_type == 'ZK':
+        # file with .t instead of .t.sol for now.
+        file = open(
+            "../test/ZKNOX_zkfalcon.t", 'w')
+    else:
+        file = open(
+            "../test/ZKNOX_{}falcon.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
 
-    file.write(header('eth' if hash_type == 'RIP' else ''))
+    if hash_type == 'RIP':
+        file.write(header('eth'))
+    elif hash_type == 'ZK':
+        file.write(header('zk'))
+    else:
+        file.write(header(''))
 
     for (i, message) in enumerate(list_of_messages):
         sig = sk.sign(message.encode(),
@@ -72,7 +83,7 @@ for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
         pk_compact = falcon_compact(Poly(sk.h, q).ntt())
 
         file.write("function testVector{}() public view {{\n".format(i))
-        file.write("// public key\n")
+        file.write("// public key = {}\n".format(Poly(sk.h, q).ntt()))
         file.write("// forgefmt: disable-next-line\n")
         file.write("uint256[32] memory tmp_pkc = {};\n".format(pk_compact))
         file.write("uint256[] memory pkc = new uint[](32);\n")
@@ -80,7 +91,7 @@ for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
         file.write("\tpkc[i] = tmp_pkc[i];\n")
         file.write("}\n")
 
-        file.write("// signature s2\n")
+        file.write("// signature s2 = {}\n".format(s2))
         file.write("// forgefmt: disable-next-line\n")
         file.write("uint256[32] memory tmp_s2 = {};\n".format(s2_compact))
         file.write("uint256[] memory s2 = new uint256[](32);\n")
@@ -88,8 +99,9 @@ for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
         file.write("\ts2[i] = tmp_s2[i];\n")
         file.write("}\n")
 
-        file.write("// message\n")
-        file.write("bytes memory message  = \"{}\"; \n".format(message))
+        file.write("// message = \"{}\"\n".format(message))
+        file.write("bytes memory message  = \"{}\"; \n".format(
+            "".join(f"\\x{b:02x}" for b in message.encode())))
         file.write("bytes memory salt = \"{}\"; \n".format(
             "".join(f"\\x{b:02x}" for b in salt)))
         file.write(
