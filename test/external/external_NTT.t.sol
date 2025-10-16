@@ -43,8 +43,7 @@ contract NTTTest is Test {
         for (uint256 i = 0; i < 8; i++) {
             t[i] = [7967, 11836, 7356, 6533, 11162, 3606, 8926, 6376][i];
         }
-        uint256[] memory res = ntt.nTT(t);
-        // forgefmt: disable-next-line
+        uint256[] memory res = ntt.nTT(t);// forgefmt: disable-next-line
         uint256[8] memory ref = [uint256(3766), 4560, 5198, 11650, 790, 11575, 1749, 12159];
         for (uint256 i = 0; i < 8; i++) {
             assertEq(res[i], ref[i]);
@@ -62,8 +61,9 @@ contract NTTTest is Test {
         }
         uint256[] memory mn12 = ntt.mergeNTT(n1, n2);
         // forgefmt: disable-next-line
-        uint256[16] memory ref =
-            [uint256(1853), 4601, 7853, 884, 516, 7809, 5805, 10064, 6050, 10904, 2381, 10087, 18, 11285, 1689, 6357];
+        uint256[16] memory ref = [
+            uint256(1853), 4601, 7853, 884, 516, 7809, 5805, 10064, 6050, 10904, 2381, 10087, 18, 11285, 1689, 6357
+        ];
         for (uint256 i = 0; i < 16; i++) {
             assertEq(mn12[i], ref[i]);
         }
@@ -78,8 +78,7 @@ contract NTTTest is Test {
         for (uint256 i = 0; i < 8; i++) {
             b[i] = [59, 2374, 3391, 5556, 1303, 1946, 10633, 5023][i];
         }
-        uint256[] memory res = ntt.mulZQ(a, b);
-        // forgefmt: disable-next-line
+        uint256[] memory res = ntt.mulZQ(a, b);// forgefmt: disable-next-line
         uint256[8] memory ref = [uint256(618), 2028, 2972, 500, 7674, 10354, 11970, 1583];
         for (uint256 i = 0; i < 8; i++) {
             assertEq(res[i], ref[i]);
@@ -95,8 +94,7 @@ contract NTTTest is Test {
         for (uint256 i = 0; i < 8; i++) {
             b[i] = [59, 2374, 3391, 5556, 1303, 1946, 10633, 5023][i];
         }
-        uint256[] memory res = ntt.subZQ(a, b);
-        // forgefmt: disable-next-line
+        uint256[] memory res = ntt.subZQ(a, b);// forgefmt: disable-next-line
         uint256[8] memory ref = [uint256(7429), 5983, 7347, 4933, 8039, 2757, 7064, 7059];
         for (uint256 i = 0; i < 8; i++) {
             assertEq(res[i], ref[i]);
