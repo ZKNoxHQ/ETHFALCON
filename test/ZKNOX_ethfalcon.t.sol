@@ -7,14 +7,7 @@ import "../src/ZKNOX_ethfalcon.sol";
 import "../src/ZKNOX_falcon_deploy.sol";
 
 contract ZKNOX_FalconTest is Test {
-    ZKNOX_ethfalcon falcon;
-
-    //stateful initialisation
-    function setUp() public {
-        bytes32 salt = keccak256(abi.encodePacked("ZKnox"));
-
-        falcon = new ZKNOX_ethfalcon();
-    }
+    ZKNOX_ethfalcon falcon = new ZKNOX_ethfalcon();
 
     function testVector0()
         public

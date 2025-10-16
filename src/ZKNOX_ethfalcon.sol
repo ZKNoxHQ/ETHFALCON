@@ -40,11 +40,8 @@ pragma solidity ^0.8.25;
 
 import "./ZKNOX_common.sol";
 import "./ZKNOX_IVerifier.sol";
-
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_falcon_core.sol";
-
-//choose the XOF to use here
 import "./ZKNOX_HashToPoint.sol";
 
 /// @title ZKNOX_ethfalcon

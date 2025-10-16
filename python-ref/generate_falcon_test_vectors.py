@@ -42,14 +42,7 @@ import "../src/ZKNOX_{}falcon.sol";
 import "../src/ZKNOX_falcon_deploy.sol";
 
 contract ZKNOX_FalconTest is Test {{
-    ZKNOX_{}falcon falcon;
-
-    //stateful initialisation
-    function setUp() public {{
-        bytes32 salt = keccak256(abi.encodePacked("ZKnox"));
-
-        falcon = new ZKNOX_{}falcon();
-    }}
+    ZKNOX_{}falcon falcon = new ZKNOX_{}falcon();
 """.format(is_eth, is_eth, is_eth)
 
 
