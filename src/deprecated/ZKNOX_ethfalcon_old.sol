@@ -1,30 +1,30 @@
 /**
  *
  */
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN        NNNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                         ..../&@&#.       .###%@@@#, ..                         
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN:::::::N       N::::::N   OO:::::::::OO   X:::::X       X:::::X                      ...(@@* .... .           &#//%@@&,.                       
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::::N      N::::::N OO:::::::::::::OO X:::::X       X:::::X                    ..*@@.........              .@#%%(%&@&..                    
-/*Z:::ZZZZZZZZ:::::Z K:::::::K   K::::::KN:::::::::N     N::::::NO:::::::OOO:::::::OX::::::X     X::::::X                   .*@( ........ .  .&@@@@.      .@%%%%%#&@@.                  
-/*ZZZZZ     Z:::::Z  KK::::::K  K:::::KKKN::::::::::N    N::::::NO::::::O   O::::::OXXX:::::X   X::::::XX                ...&@ ......... .  &.     .@      /@%%%%%%&@@#                  
-/*        Z:::::Z      K:::::K K:::::K   N:::::::::::N   N::::::NO:::::O     O:::::O   X:::::X X:::::X                   ..@( .......... .  &.     ,&      /@%%%%&&&&@@@.              
-/*       Z:::::Z       K::::::K:::::K    N:::::::N::::N  N::::::NO:::::O     O:::::O    X:::::X:::::X                   ..&% ...........     .@%(#@#      ,@%%%%&&&&&@@@%.               
-/*      Z:::::Z        K:::::::::::K     N::::::N N::::N N::::::NO:::::O     O:::::O     X:::::::::X                   ..,@ ............                 *@%%%&%&&&&&&@@@.               
-/*     Z:::::Z         K:::::::::::K     N::::::N  N::::N:::::::NO:::::O     O:::::O     X:::::::::X                  ..(@ .............             ,#@&&&&&&&&&&&&@@@@*               
-/*    Z:::::Z          K::::::K:::::K    N::::::N   N:::::::::::NO:::::O     O:::::O    X:::::X:::::X                   .*@..............  . ..,(%&@@&&&&&&&&&&&&&&&&@@@@,               
-/*   Z:::::Z           K:::::K K:::::K   N::::::N    N::::::::::NO:::::O     O:::::O   X:::::X X:::::X                 ...&#............. *@@&&&&&&&&&&&&&&&&&&&&@@&@@@@&                
-/*ZZZ:::::Z     ZZZZZKK::::::K  K:::::KKKN::::::N     N:::::::::NO::::::O   O::::::OXXX:::::X   X::::::XX               ...@/.......... *@@@@. ,@@.  &@&&&&&&@@@@@@@@@@@.               
-/*Z::::::ZZZZZZZZ:::ZK:::::::K   K::::::KN::::::N      N::::::::NO:::::::OOO:::::::OX::::::X     X::::::X               ....&#..........@@@, *@@&&&@% .@@@@@@@@@@@@@@@&                  
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N       N:::::::N OO:::::::::::::OO X:::::X       X:::::X                ....*@.,......,@@@...@@@@@@&..%@@@@@@@@@@@@@/                   
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N        N::::::N   OO:::::::::OO   X:::::X       X:::::X                   ...*@,,.....%@@@,.........%@@@@@@@@@@@@(                     
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN         NNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                      ...&@,....*@@@@@ ..,@@@@@@@@@@@@@&.                     
-/*                                                                                                                                   ....,(&@@&..,,,/@&#*. .                             
-/*                                                                                                                                    ......(&.,.,,/&@,.                                
-/*                                                                                                                                      .....,%*.,*@%                               
-/*                                                                                                                                    .#@@@&(&@*,,*@@%,..                               
-/*                                                                                                                                    .##,,,**$.,,*@@@@@%.                               
-/*                                                                                                                                     *(%%&&@(,,**@@@@@&                              
-/*                                                                                                                                      . .  .#@((@@(*,**                                
-/*                                                                                                                                             . (*. .                                   
+/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN        NNNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                         ..../&@&#.       .###%@@@#, ..
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN:::::::N       N::::::N   OO:::::::::OO   X:::::X       X:::::X                      ...(@@* .... .           &#//%@@&,.
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::::N      N::::::N OO:::::::::::::OO X:::::X       X:::::X                    ..*@@.........              .@#%%(%&@&..
+/*Z:::ZZZZZZZZ:::::Z K:::::::K   K::::::KN:::::::::N     N::::::NO:::::::OOO:::::::OX::::::X     X::::::X                   .*@( ........ .  .&@@@@.      .@%%%%%#&@@.
+/*ZZZZZ     Z:::::Z  KK::::::K  K:::::KKKN::::::::::N    N::::::NO::::::O   O::::::OXXX:::::X   X::::::XX                ...&@ ......... .  &.     .@      /@%%%%%%&@@#
+/*        Z:::::Z      K:::::K K:::::K   N:::::::::::N   N::::::NO:::::O     O:::::O   X:::::X X:::::X                   ..@( .......... .  &.     ,&      /@%%%%&&&&@@@.
+/*       Z:::::Z       K::::::K:::::K    N:::::::N::::N  N::::::NO:::::O     O:::::O    X:::::X:::::X                   ..&% ...........     .@%(#@#      ,@%%%%&&&&&@@@%.
+/*      Z:::::Z        K:::::::::::K     N::::::N N::::N N::::::NO:::::O     O:::::O     X:::::::::X                   ..,@ ............                 *@%%%&%&&&&&&@@@.
+/*     Z:::::Z         K:::::::::::K     N::::::N  N::::N:::::::NO:::::O     O:::::O     X:::::::::X                  ..(@ .............             ,#@&&&&&&&&&&&&@@@@*
+/*    Z:::::Z          K::::::K:::::K    N::::::N   N:::::::::::NO:::::O     O:::::O    X:::::X:::::X                   .*@..............  . ..,(%&@@&&&&&&&&&&&&&&&&@@@@,
+/*   Z:::::Z           K:::::K K:::::K   N::::::N    N::::::::::NO:::::O     O:::::O   X:::::X X:::::X                 ...&#............. *@@&&&&&&&&&&&&&&&&&&&&@@&@@@@&
+/*ZZZ:::::Z     ZZZZZKK::::::K  K:::::KKKN::::::N     N:::::::::NO::::::O   O::::::OXXX:::::X   X::::::XX               ...@/.......... *@@@@. ,@@.  &@&&&&&&@@@@@@@@@@@.
+/*Z::::::ZZZZZZZZ:::ZK:::::::K   K::::::KN::::::N      N::::::::NO:::::::OOO:::::::OX::::::X     X::::::X               ....&#..........@@@, *@@&&&@% .@@@@@@@@@@@@@@@&
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N       N:::::::N OO:::::::::::::OO X:::::X       X:::::X                ....*@.,......,@@@...@@@@@@&..%@@@@@@@@@@@@@/
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N        N::::::N   OO:::::::::OO   X:::::X       X:::::X                   ...*@,,.....%@@@,.........%@@@@@@@@@@@@(
+/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN         NNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                      ...&@,....*@@@@@ ..,@@@@@@@@@@@@@&.
+/*                                                                                                                                   ....,(&@@&..,,,/@&#*. .
+/*                                                                                                                                    ......(&.,.,,/&@,.
+/*                                                                                                                                      .....,%*.,*@%
+/*                                                                                                                                    .#@@@&(&@*,,*@@%,..
+/*                                                                                                                                    .##,,,**$.,,*@@@@@%.
+/*                                                                                                                                     *(%%&&@(,,**@@@@@&
+/*                                                                                                                                      . .  .#@((@@(*,**
+/*                                                                                                                                             . (*. .
 /*                                                                                                                                              .*/
 ///* Copyright (C) 2025 - Renaud Dubois, Simon Masson - This file is part of ZKNOX project
 ///* License: This software is licensed under MIT License
@@ -96,7 +96,11 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         bytes memory msgs,
         CompactSignature memory signature,
         uint256[] memory ntth // public key, compacted representing coefficients over 16 bits
-    ) public view returns (bool result) {
+    )
+        public
+        view
+        returns (bool result)
+    {
         if (CheckParameters(signature, ntth) == false) return false;
 
         uint256[] memory hashed = hashToPointRIP(signature.salt, msgs);
@@ -107,7 +111,11 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         bytes memory msgs,
         CompactSignature memory signature,
         uint256[] memory ntth // public key, compacted representing coefficients over 16 bits
-    ) public view returns (bool result) {
+    )
+        public
+        view
+        returns (bool result)
+    {
         if (CheckParameters(signature, ntth) == false) return false;
         uint256[] memory hashed = hashToPointTETRATION(signature.salt, msgs);
         return falcon_core(ntt, signature.salt, signature.s2, ntth, hashed);
@@ -117,7 +125,11 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         bytes memory msgs,
         CompactSignature memory signature,
         uint256[] memory ntth // public key, compacted representing coefficients over 16 bits
-    ) public view returns (bool result) {
+    )
+        public
+        view
+        returns (bool result)
+    {
         if (CheckParameters(signature, ntth) == false) return false;
 
         uint256[] memory hashed = hashToPointRIP(signature.salt, msgs);
@@ -129,7 +141,11 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         bytes memory salt, // compacted signature salt part
         uint256[] memory s2, // compacted signature s2 part
         uint256[] memory ntth // public key, compacted representing coefficients over 16 bits
-    ) external view returns (bool result) {
+    )
+        external
+        view
+        returns (bool result)
+    {
         // if (h.length != 32) return false;
         if (salt.length != 40) {
             revert("invalid salt length");

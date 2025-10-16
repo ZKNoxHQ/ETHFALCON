@@ -1,30 +1,30 @@
 /**
  *
  */
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN        NNNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                         ..../&@&#.       .###%@@@#, ..                         
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN:::::::N       N::::::N   OO:::::::::OO   X:::::X       X:::::X                      ...(@@* .... .           &#//%@@&,.                       
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::::N      N::::::N OO:::::::::::::OO X:::::X       X:::::X                    ..*@@.........              .@#%%(%&@&..                    
-/*Z:::ZZZZZZZZ:::::Z K:::::::K   K::::::KN:::::::::N     N::::::NO:::::::OOO:::::::OX::::::X     X::::::X                   .*@( ........ .  .&@@@@.      .@%%%%%#&@@.                  
-/*ZZZZZ     Z:::::Z  KK::::::K  K:::::KKKN::::::::::N    N::::::NO::::::O   O::::::OXXX:::::X   X::::::XX                ...&@ ......... .  &.     .@      /@%%%%%%&@@#                  
-/*        Z:::::Z      K:::::K K:::::K   N:::::::::::N   N::::::NO:::::O     O:::::O   X:::::X X:::::X                   ..@( .......... .  &.     ,&      /@%%%%&&&&@@@.              
-/*       Z:::::Z       K::::::K:::::K    N:::::::N::::N  N::::::NO:::::O     O:::::O    X:::::X:::::X                   ..&% ...........     .@%(#@#      ,@%%%%&&&&&@@@%.               
-/*      Z:::::Z        K:::::::::::K     N::::::N N::::N N::::::NO:::::O     O:::::O     X:::::::::X                   ..,@ ............                 *@%%%&%&&&&&&@@@.               
-/*     Z:::::Z         K:::::::::::K     N::::::N  N::::N:::::::NO:::::O     O:::::O     X:::::::::X                  ..(@ .............             ,#@&&&&&&&&&&&&@@@@*               
-/*    Z:::::Z          K::::::K:::::K    N::::::N   N:::::::::::NO:::::O     O:::::O    X:::::X:::::X                   .*@..............  . ..,(%&@@&&&&&&&&&&&&&&&&@@@@,               
-/*   Z:::::Z           K:::::K K:::::K   N::::::N    N::::::::::NO:::::O     O:::::O   X:::::X X:::::X                 ...&#............. *@@&&&&&&&&&&&&&&&&&&&&@@&@@@@&                
-/*ZZZ:::::Z     ZZZZZKK::::::K  K:::::KKKN::::::N     N:::::::::NO::::::O   O::::::OXXX:::::X   X::::::XX               ...@/.......... *@@@@. ,@@.  &@&&&&&&@@@@@@@@@@@.               
-/*Z::::::ZZZZZZZZ:::ZK:::::::K   K::::::KN::::::N      N::::::::NO:::::::OOO:::::::OX::::::X     X::::::X               ....&#..........@@@, *@@&&&@% .@@@@@@@@@@@@@@@&                  
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N       N:::::::N OO:::::::::::::OO X:::::X       X:::::X                ....*@.,......,@@@...@@@@@@&..%@@@@@@@@@@@@@/                   
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N        N::::::N   OO:::::::::OO   X:::::X       X:::::X                   ...*@,,.....%@@@,.........%@@@@@@@@@@@@(                     
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN         NNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                      ...&@,....*@@@@@ ..,@@@@@@@@@@@@@&.                     
-/*                                                                                                                                   ....,(&@@&..,,,/@&#*. .                             
-/*                                                                                                                                    ......(&.,.,,/&@,.                                
-/*                                                                                                                                      .....,%*.,*@%                               
-/*                                                                                                                                    .#@@@&(&@*,,*@@%,..                               
-/*                                                                                                                                    .##,,,**$.,,*@@@@@%.                               
-/*                                                                                                                                     *(%%&&@(,,**@@@@@&                              
-/*                                                                                                                                      . .  .#@((@@(*,**                                
-/*                                                                                                                                             . (*. .                                   
+/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN        NNNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                         ..../&@&#.       .###%@@@#, ..
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN:::::::N       N::::::N   OO:::::::::OO   X:::::X       X:::::X                      ...(@@* .... .           &#//%@@&,.
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::::N      N::::::N OO:::::::::::::OO X:::::X       X:::::X                    ..*@@.........              .@#%%(%&@&..
+/*Z:::ZZZZZZZZ:::::Z K:::::::K   K::::::KN:::::::::N     N::::::NO:::::::OOO:::::::OX::::::X     X::::::X                   .*@( ........ .  .&@@@@.      .@%%%%%#&@@.
+/*ZZZZZ     Z:::::Z  KK::::::K  K:::::KKKN::::::::::N    N::::::NO::::::O   O::::::OXXX:::::X   X::::::XX                ...&@ ......... .  &.     .@      /@%%%%%%&@@#
+/*        Z:::::Z      K:::::K K:::::K   N:::::::::::N   N::::::NO:::::O     O:::::O   X:::::X X:::::X                   ..@( .......... .  &.     ,&      /@%%%%&&&&@@@.
+/*       Z:::::Z       K::::::K:::::K    N:::::::N::::N  N::::::NO:::::O     O:::::O    X:::::X:::::X                   ..&% ...........     .@%(#@#      ,@%%%%&&&&&@@@%.
+/*      Z:::::Z        K:::::::::::K     N::::::N N::::N N::::::NO:::::O     O:::::O     X:::::::::X                   ..,@ ............                 *@%%%&%&&&&&&@@@.
+/*     Z:::::Z         K:::::::::::K     N::::::N  N::::N:::::::NO:::::O     O:::::O     X:::::::::X                  ..(@ .............             ,#@&&&&&&&&&&&&@@@@*
+/*    Z:::::Z          K::::::K:::::K    N::::::N   N:::::::::::NO:::::O     O:::::O    X:::::X:::::X                   .*@..............  . ..,(%&@@&&&&&&&&&&&&&&&&@@@@,
+/*   Z:::::Z           K:::::K K:::::K   N::::::N    N::::::::::NO:::::O     O:::::O   X:::::X X:::::X                 ...&#............. *@@&&&&&&&&&&&&&&&&&&&&@@&@@@@&
+/*ZZZ:::::Z     ZZZZZKK::::::K  K:::::KKKN::::::N     N:::::::::NO::::::O   O::::::OXXX:::::X   X::::::XX               ...@/.......... *@@@@. ,@@.  &@&&&&&&@@@@@@@@@@@.
+/*Z::::::ZZZZZZZZ:::ZK:::::::K   K::::::KN::::::N      N::::::::NO:::::::OOO:::::::OX::::::X     X::::::X               ....&#..........@@@, *@@&&&@% .@@@@@@@@@@@@@@@&
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N       N:::::::N OO:::::::::::::OO X:::::X       X:::::X                ....*@.,......,@@@...@@@@@@&..%@@@@@@@@@@@@@/
+/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N        N::::::N   OO:::::::::OO   X:::::X       X:::::X                   ...*@,,.....%@@@,.........%@@@@@@@@@@@@(
+/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN         NNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                      ...&@,....*@@@@@ ..,@@@@@@@@@@@@@&.
+/*                                                                                                                                   ....,(&@@&..,,,/@&#*. .
+/*                                                                                                                                    ......(&.,.,,/&@,.
+/*                                                                                                                                      .....,%*.,*@%
+/*                                                                                                                                    .#@@@&(&@*,,*@@%,..
+/*                                                                                                                                    .##,,,**$.,,*@@@@@%.
+/*                                                                                                                                     *(%%&&@(,,**@@@@@&
+/*                                                                                                                                      . .  .#@((@@(*,**
+/*                                                                                                                                             . (*. .
 /*                                                                                                                                              .*/
 ///* Copyright (C) 2025 - Renaud Dubois, Simon Masson - This file is part of ZKNOX project
 ///* License: This software is licensed under MIT License
@@ -54,11 +54,7 @@ contract ZKNOX_NTT {
 
     //Vectorized modular multiplication
     //Multiply chunk wise vectors of n chunks modulo q
-    function ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b, uint256 q)
-        public
-        pure
-        returns (uint256[] memory)
-    {
+    function ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b, uint256 q) public pure returns (uint256[] memory) {
         assert(a.length == b.length);
         uint256[] memory res = new uint256[](a.length);
         for (uint256 i = 0; i < a.length; i++) {
@@ -69,11 +65,7 @@ contract ZKNOX_NTT {
 
     //Vectorized modular multiplication
     //Multiply chunk wise vectors of n chunks modulo q
-    function ZKNOX_VECADDMOD(uint256[] memory a, uint256[] memory b, uint256 q)
-        public
-        pure
-        returns (uint256[] memory)
-    {
+    function ZKNOX_VECADDMOD(uint256[] memory a, uint256[] memory b, uint256 q) public pure returns (uint256[] memory) {
         assert(a.length == b.length);
         uint256[] memory res = new uint256[](a.length);
         for (uint256 i = 0; i < a.length; i++) {
@@ -84,11 +76,7 @@ contract ZKNOX_NTT {
 
     //Vectorized modular multiplication
     //Multiply chunk wise vectors of n chunks modulo q
-    function ZKNOX_VECSUBMOD(uint256[] memory a, uint256[] memory b, uint256 q)
-        public
-        pure
-        returns (uint256[] memory)
-    {
+    function ZKNOX_VECSUBMOD(uint256[] memory a, uint256[] memory b, uint256 q) public pure returns (uint256[] memory) {
         assert(a.length == b.length);
         uint256[] memory res = new uint256[](a.length);
         for (uint256 i = 0; i < a.length; i++) {
@@ -204,6 +192,7 @@ contract ZKNOX_NTT {
                 m := shr(1, m)
             } //end while
 
+
             for { let j := 0 } gt(mload(a), j) { j := add(j, 1) } {
                 //j<n
                 let a_aj := add(a, mul(add(j, 1), 32)) //address of a[j]
@@ -221,9 +210,10 @@ contract ZKNOX_NTT {
 
     //multiply two polynomials over Zq a being in standard canonical representation, b in ntt representation with reduction polynomial X^n+1
     function ZKNOX_NTT_MUL(uint256[] memory a, uint256[] memory b) public view returns (uint256[] memory) {
-        return (
-            ZKNOX_NTTINV(ZKNOX_VECMULMOD(ZKNOX_NTTFW(a, o_psirev), ZKNOX_NTTFW(b, o_psirev), storage_q), o_psi_inv_rev)
-        );
+        return
+            (ZKNOX_NTTINV(
+                    ZKNOX_VECMULMOD(ZKNOX_NTTFW(a, o_psirev), ZKNOX_NTTFW(b, o_psirev), storage_q), o_psi_inv_rev
+                ));
     }
 
     /**
@@ -384,6 +374,7 @@ contract ZKNOX_NTT {
                 m := shr(1, m)
             } //end while
 
+
             for { let j := 0 } gt(mload(a), j) { j := add(j, 1) } {
                 //j<n
                 let a_aj := add(a, mul(add(j, 1), 32)) //address of a[j]
@@ -458,14 +449,12 @@ contract ZKNOX_NTT {
     //multiply two polynomials over Zq a being in standard canonical representation, b in ntt representation with reduction polynomial X^n+1
     //packed input and output (16 chunks by word)
     function ZKNOX_NTT_HALFMUL_Compact(uint256[] memory a, uint256[] memory b) public view returns (uint256[] memory) {
-        return (
-            ZKNOX_NTT_Compact(
+        return (ZKNOX_NTT_Compact(
                 _ZKNOX_NTTINV(
                     _ZKNOX_VECMULMOD(_ZKNOX_NTTFW(ZKNOX_NTT_Expand(a), o_psirev), ZKNOX_NTT_Expand(b), storage_q),
                     o_psi_inv_rev
                 )
-            )
-        );
+            ));
     }
 } //end of contract
 /**

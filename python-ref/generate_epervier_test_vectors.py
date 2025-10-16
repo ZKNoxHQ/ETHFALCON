@@ -31,7 +31,6 @@ def header(is_eth):
 pragma solidity ^0.8.25;
 
 import {{Test, console}} from "forge-std/Test.sol";
-import "../src/ZKNOX_NTT.sol";
 import "../src/ZKNOX_{}epervier.sol";
 import "../src/ZKNOX_falcon_utils.sol";
 
