@@ -40,12 +40,8 @@ pragma solidity ^0.8.25;
 
 import "./ZKNOX_common.sol";
 import "./ZKNOX_IVerifier.sol";
-
 import "./ZKNOX_falcon_utils.sol";
-import {ZKNOX_NTT} from "./ZKNOX_NTT.sol";
 import "./ZKNOX_falcon_core.sol";
-
-//choose the XOF to use here
 import "./ZKNOX_HashToPoint.sol";
 
 /// @title ZKNOX_falcon
@@ -55,12 +51,11 @@ import "./ZKNOX_HashToPoint.sol";
 /// @custom:experimental This library is not audited yet, do not use in production.
 
 contract ZKNOX_falcon is ISigVerifier {
-    ZKNOX_NTT ntt;
+    // ZKNOX_NTT ntt;
     address public psirev;
     address public psiInvrev;
     bool EIP7885;
     bool immutableMe;
-    uint256 err_flag; //a debug flag
 
     function update(address i_psirev, address i_psiInvrev) public {
         if (immutableMe == true) revert();
@@ -68,17 +63,6 @@ contract ZKNOX_falcon is ISigVerifier {
         psiInvrev = i_psiInvrev;
         EIP7885 = false;
         immutableMe = true;
-    }
-
-    function updateNTT(ZKNOX_NTT i_ntt) public {
-        if (immutableMe == true) revert();
-        ntt = i_ntt;
-        EIP7885 = true;
-        immutableMe = true;
-    }
-
-    function setflag(uint256 value) public {
-        err_flag = value;
     }
 
     struct CompactSignature {

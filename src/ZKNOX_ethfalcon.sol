@@ -42,7 +42,6 @@ import "./ZKNOX_common.sol";
 import "./ZKNOX_IVerifier.sol";
 
 import "./ZKNOX_falcon_utils.sol";
-// import {ZKNOX_NTT} from "./ZKNOX_NTT.sol";
 import "./ZKNOX_falcon_core.sol";
 
 //choose the XOF to use here

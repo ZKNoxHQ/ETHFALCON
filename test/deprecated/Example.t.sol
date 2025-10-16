@@ -34,7 +34,10 @@ contract ExampleTest is Test {
         falcon = new ZKNOX_falcon(ntt);
     }
 
-    function test_ExampleVerification() public view {
+    function test_ExampleVerification()
+        public
+        view
+    {
 
         //
         // Verify the signature generated using python

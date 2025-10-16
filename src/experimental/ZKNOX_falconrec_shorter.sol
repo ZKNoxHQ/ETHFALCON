@@ -39,14 +39,10 @@
 pragma solidity ^0.8.25;
 
 import {ZKNOX_NTT} from "../ZKNOX_NTT.sol";
-
-//choose the XOF to use here
 import "../ZKNOX_HashToPoint.sol";
 
 contract ZKNOX_falconrec_shorter {
     ZKNOX_NTT ntt;
-
-    uint256 constant _ERR_INPUT_SIZE = 0xffffffff01;
 
     constructor(ZKNOX_NTT i_ntt) {
         ntt = i_ntt;

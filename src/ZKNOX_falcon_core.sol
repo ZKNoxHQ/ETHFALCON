@@ -39,7 +39,6 @@
 pragma solidity ^0.8.25;
 
 import "./ZKNOX_falcon_utils.sol";
-// import "./ZKNOX_NTT.sol";
 import "./ZKNOX_NTT_falcon.sol";
 
 function falcon_checkPolynomialRange(uint256[] memory polynomial, bool is_compact) pure returns (bool) {

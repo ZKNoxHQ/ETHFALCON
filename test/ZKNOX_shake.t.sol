@@ -65,7 +65,7 @@ contract ZKNOX_ShakeTest is Test {
     }
 
     function test_update() public pure {
-        ctx_shake memory ctx;// forgefmt: disable-next-line
+        ctx_shake memory ctx; // forgefmt: disable-next-line
         uint64[25] memory expected=[0xf2a3a3057654e665,0xce044847fc85f48e,  0xec3bd70f31a2866a,  0x7bada64d3aa28d05,  0xdf2d6ae3aa215523,  0x18b3f802c1c29a3f,  0x6044c64141c18ca1,  0x867be8cca2f1a54,  0x73773b337ce4e5eb,  0x7b8b093e6cc376c6,  0x3ed5eb2ef9295a2a,  0xd6ab08c040f891d2,  0x329ec3f446ae8bc6,  0x21ce09a9142a7a7d,  0xc5d90ada910c2965,  0xefa939add08954f4,  0xdfd33eee70e98a5a,  0x69c21fbc22c1f12a,  0x99e8f946ed7c1708,  0xc47ef08b0c9f3f9f,  0x5a102b80ec0fb414,  0x52d66d1377cf6219,  0x3a79068ab1f1288,  0x17a59fb049fd9130,  0x9fccb95c262e9e76];
 
         //vector of size 136 from official kats

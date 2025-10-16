@@ -13,7 +13,7 @@ contract Script_Deploy_epervier is BaseScript {
     function run() external {
         vm.startBroadcast();
 
-        bytes32 salty = keccak256(abi.encodePacked("ZKNOX_v0.14"));// forgefmt: disable-next-line
+        bytes32 salty = keccak256(abi.encodePacked("ZKNOX_v0.14")); // forgefmt: disable-next-line
         address pk_0 = address(728199263750570446964354330903202655824594974439);
         // public key expected
 

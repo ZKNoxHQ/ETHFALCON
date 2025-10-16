@@ -40,16 +40,12 @@ pragma solidity ^0.8.25;
 
 import {console} from "forge-std/Test.sol";
 import {ZKNOX_NTT} from "../ZKNOX_NTT.sol";
-
-//choose the XOF to use here
 import "../ZKNOX_HashToPoint.sol";
 
 contract ZKNOX_falcon_epervier {
     //FALCON CONSTANTS
 
     ZKNOX_NTT ntt;
-
-    uint256 constant _ERR_INPUT_SIZE = 0xffffffff01;
 
     constructor(ZKNOX_NTT i_ntt) {
         ntt = i_ntt;

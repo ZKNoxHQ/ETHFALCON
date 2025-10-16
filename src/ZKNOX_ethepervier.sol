@@ -40,11 +40,8 @@ pragma solidity ^0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 
-import {ZKNOX_NTT} from "./ZKNOX_NTT.sol";
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_NTT_falcon.sol";
-
-//choose the XOF to use here
 import "./ZKNOX_HashToPoint.sol";
 
 /// @title ZKNOX_ethepervier
@@ -53,10 +50,6 @@ import "./ZKNOX_HashToPoint.sol";
 
 /// @custom:experimental This library is not audited yet, do not use in production.
 contract ZKNOX_ethepervier {
-    ZKNOX_NTT ntt;
-
-    uint256 constant _ERR_INPUT_SIZE = 0xffffffff01;
-
     function HashToAddress(bytes memory m) public pure returns (address) {
         return address(uint160(uint256(keccak256(m))));
     }

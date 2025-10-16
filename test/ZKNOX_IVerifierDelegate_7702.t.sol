@@ -117,7 +117,9 @@ contract SignDelegationTest is Test {
         token = new ERC20(ALICE_ADDRESS);
     }
 
-    function testDelegate() public {
+    function testDelegate()
+        public
+    {
 
         // public key
         // forgefmt: disable-next-line
