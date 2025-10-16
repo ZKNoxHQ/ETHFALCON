@@ -34,7 +34,10 @@ contract ZKNOX_falcon_epervierTest is Test {
         epervier = new ZKNOX_falcon_epervier(ntt);
     }
 
-    function testVector0() public view {
+    function testVector0()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -66,7 +69,10 @@ uint[512] memory tmp_s2_inv_ntt = [uint(2230), 12222,7665,6585,11005,5728,817,68
         assertEq(pk_0, recovered_pk_0);
     }
 
-    function testVector1() public view {
+    function testVector1()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -98,7 +104,10 @@ uint[512] memory tmp_s2_inv_ntt = [uint(4337), 3346,7356,3928,4373,2806,7789,41,
         assertEq(pk_1, recovered_pk_1);
     }
 
-    function testVector2() public view {
+    function testVector2()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -130,7 +139,10 @@ uint[512] memory tmp_s2_inv_ntt = [uint(4401), 2536,2507,172,2326,6187,2488,1633
         assertEq(pk_2, recovered_pk_2);
     }
 
-    function testVector3() public view {
+    function testVector3()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -162,7 +174,10 @@ uint[512] memory tmp_s2_inv_ntt = [uint(12138), 958,5209,5769,7917,4686,8137,724
         assertEq(pk_3, recovered_pk_3);
     }
 
-    function testVector4() public view {
+    function testVector4()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line

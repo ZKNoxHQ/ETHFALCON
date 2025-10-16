@@ -34,7 +34,10 @@ contract ZKNOX_FalconRecShorterTest is Test {
         falconrec = new ZKNOX_falconrec_shorter(ntt);
     }
 
-    function testVector0() public view {
+    function testVector0()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -63,7 +66,10 @@ uint[512] memory tmp_s2 = [uint(12205), 12232,146,280,180,43,12281,12002,126,122
         assertEq(pk_0, recovered_pk_0);
     }
 
-    function testVector1() public view {
+    function testVector1()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -92,7 +98,10 @@ uint[512] memory tmp_s2 = [uint(201), 245,12233,12281,12269,12129,59,12080,186,2
         assertEq(pk_1, recovered_pk_1);
     }
 
-    function testVector2() public view {
+    function testVector2()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -121,7 +130,10 @@ uint[512] memory tmp_s2 = [uint(12125), 12075,12019,11986,12100,25,63,43,11967,3
         assertEq(pk_2, recovered_pk_2);
     }
 
-    function testVector3() public view {
+    function testVector3()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -150,7 +162,10 @@ uint[512] memory tmp_s2 = [uint(12283), 194,12247,19,12099,60,12116,12032,0,1197
         assertEq(pk_3, recovered_pk_3);
     }
 
-    function testVector4() public view {
+    function testVector4()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line

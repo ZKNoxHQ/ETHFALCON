@@ -34,7 +34,10 @@ contract ZKNOX_FalconTest is Test {
         falcon = new ZKNOX_falcon(ntt);
     }
 
-    function testVector0() public view {
+    function testVector0()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -59,7 +62,10 @@ uint[512] memory tmp_s2 = [uint(75), 55,12190,110,19,20,12125,12042,12277,80,10,
         assertEq(true, result);
     }
 
-    function testVector1() public view {
+    function testVector1()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -84,7 +90,10 @@ uint[512] memory tmp_s2 = [uint(208), 12198,12267,12179,12189,12226,11975,12186,
         assertEq(true, result);
     }
 
-    function testVector2() public view {
+    function testVector2()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -109,7 +118,10 @@ uint[512] memory tmp_s2 = [uint(12203), 71,12221,12236,40,243,27,57,232,41,17,12
         assertEq(true, result);
     }
 
-    function testVector3() public view {
+    function testVector3()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -134,7 +146,10 @@ uint[512] memory tmp_s2 = [uint(82), 363,12149,12287,55,12245,48,61,162,12287,65
         assertEq(true, result);
     }
 
-    function testVector4() public view {
+    function testVector4()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line

@@ -19,7 +19,10 @@ contract ZKNOX_epervierTest is Test {
         epervier = new ZKNOX_epervier();
     }
 
-    function testVector0() public view {
+    function testVector0()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -50,7 +53,10 @@ uint256[32] memory tmp_s2 = [212996719757874834547904020184962597123251540986988
         assertEq(pk, recovered_pk);
     }
 
-    function testVector1() public view {
+    function testVector1()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -81,7 +87,10 @@ uint256[32] memory tmp_s2 = [212413626526559761180521997382352973793255632549538
         assertEq(pk, recovered_pk);
     }
 
-    function testVector2() public view {
+    function testVector2()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -112,7 +121,10 @@ uint256[32] memory tmp_s2 = [438507824205089640972760134708744414131363728097035
         assertEq(pk, recovered_pk);
     }
 
-    function testVector3() public view {
+    function testVector3()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
@@ -143,7 +155,10 @@ uint256[32] memory tmp_s2 = [216509486767882064086166768650618743693575142733232
         assertEq(pk, recovered_pk);
     }
 
-    function testVector4() public view {
+    function testVector4()
+        public
+        view
+    {
 
         // public key
         // forgefmt: disable-next-line
