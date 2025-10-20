@@ -127,12 +127,11 @@ function _decompress_sig(bytes memory buf, uint256 offset) pure returns (uint256
 	 *   message              mlen bytes
 	 *   signature            slen bytes
 	 */
-function decompress_KAT(bytes memory pk, bytes memory sm)
+function decompress_KAT(bytes memory pk, bytes memory sm, uint256 mlen)
     pure
     returns (uint256[] memory h, uint256[] memory s2, bytes memory salt, bytes memory message)
 {
     uint256 slen = (uint256(uint8(sm[0])) << 8) + uint256(uint8(sm[1]));
-    uint256 mlen = sm.length - slen - 42;
 
     /*
 	 * Decode public key.

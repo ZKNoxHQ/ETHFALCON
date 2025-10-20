@@ -112,7 +112,8 @@ contract Benchmark is Test {
         bytes memory message;
 
         uint256 gasStart = gasleft();
-        (kpub, s2, salt, message) = decompress_KAT(pk, sm);
+        // KAT vector 0 has mlen = 33
+        (kpub, s2, salt, message) = decompress_KAT(pk, sm, 33);
         uint256[] memory ntth = _ZKNOX_NTT_Compact(_ZKNOX_NTTFW_vectorized(kpub));
         uint256 gasUsed = gasStart - gasleft();
         console.log("Decompress KAT cost:   ", gasUsed);
@@ -132,7 +133,8 @@ contract Benchmark is Test {
         bytes memory m;
 
         uint256 gasStart = gasleft();
-        (kpub, s2, salt, m) = decompress_KAT(pk, sm);
+        // KAT vector 0 has mlen = 33
+        (kpub, s2, salt, m) = decompress_KAT(pk, sm, 33);
         uint256[] memory ntth = _ZKNOX_NTT_Compact(_ZKNOX_NTTFW_vectorized(kpub));
         cs2 = _ZKNOX_NTT_Compact(s2);
         bool result = falcon.verify(m, salt, cs2, ntth);

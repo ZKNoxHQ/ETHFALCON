@@ -6,7 +6,7 @@ import struct
 
 
 # Constants
-MAX_BUFFER_SIZE = 1024  # Adjust based on needs
+MAX_BUFFER_SIZE = 4096  # Increased to handle large KAT messages (max ~1472 bytes + salt)
 KECCAK_OUTPUT = 32  # Keccak output size in bytes
 
 

@@ -46,7 +46,8 @@ contract FalconKATS_Test is Test {
         bytes memory salt;
         bytes memory message;
 
-        (kpub, s2, salt, message) = decompress_KAT(pk, sm);
+        // KAT vector 0 has mlen = 33
+        (kpub, s2, salt, message) = decompress_KAT(pk, sm, 33);
 
         uint256[] memory ntth = _ZKNOX_NTT_Compact(_ZKNOX_NTTFW_vectorized(kpub));
     }
@@ -75,7 +76,8 @@ contract FalconKATS_Test is Test {
         bytes memory salt;
         bytes memory message;
 
-        (kpub, s2, salt, message) = decompress_KAT(pk, sm);
+        // KAT vector 0 has mlen = 33
+        (kpub, s2, salt, message) = decompress_KAT(pk, sm, 33);
 
         uint256[] memory hashed = hashToPointNIST(salt, message);
 

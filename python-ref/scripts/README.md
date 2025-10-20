@@ -11,6 +11,7 @@ This repository contains the following files:
 1. [`saga.py`](saga.py) contains the SAGA test suite to test Gaussian samplers. It is used in [`../test.py`](../test.py).
 1. [`samplerz_KAT512.py`](samplerz_KAT512.py) and [`samplerz_KAT1024.py`](samplerz_KAT1024.py) contain test vectors for the sampler over the integers. They are used in [`../test.py`](../test.py).
 1. [`sign_KAT.py`](sign_KAT.py) contains test vectors for the signing procedure. It is used in [`../test.py`](../test.py).
+1. [`generate_kat_rsp.py`](generate_kat_rsp.py) Reads in the Falcon 2022 KAT files and creates a set of signatures for ETHFALCON based on the message and keys.
 
 ## License
 
