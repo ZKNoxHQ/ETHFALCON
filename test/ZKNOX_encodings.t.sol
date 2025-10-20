@@ -42,6 +42,7 @@ contract Encodings_Test is Test {
         bytes memory salt;
         bytes memory message;
 
-        (h, s2, salt, message) = decompress_KAT(pk, sm);
+        // KAT vector 0 has mlen = 33
+        (h, s2, salt, message) = decompress_KAT(pk, sm, 33);
     }
 }
