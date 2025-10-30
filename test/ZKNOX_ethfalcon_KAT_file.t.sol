@@ -11,7 +11,6 @@ import "../src/ZKNOX_falcon_deploy.sol";
 /// @dev Parses falcon512-KAT.req and ethfalcon512-KAT.rsp files and verifies signatures
 contract ETHFalconKATFileTest is Test {
     ZKNOX_ethfalcon falcon;
-    ZKNOX_NTT ntt = new ZKNOX_NTT(address(0), address(0), 12289, 12265);
 
     function setUp() public {
         falcon = new ZKNOX_ethfalcon();
