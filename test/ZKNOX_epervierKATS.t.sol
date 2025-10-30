@@ -55,8 +55,7 @@ contract EpervierKATS_Test is Test {
             s2[k] = (uint256(uint8(sm[2 + 40 + 33 + 1 + 1024 + 1 + 2 * k])) << 8)
                 | uint256(uint8(sm[2 + 40 + 33 + 1 + 1024 + 1 + 2 * k + 1]));
         }
-        uint256 hint =
-            (uint256(uint8(sm[2 + 40 + 33 + 1 + 1024 + 1 + 1024])) << 8)
+        uint256 hint = (uint256(uint8(sm[2 + 40 + 33 + 1 + 1024 + 1 + 1024])) << 8)
             | uint256(uint8(sm[2 + 40 + 33 + 1 + 1024 + 1 + 1024 + 1]));
 
         uint256[] memory kpub = new uint256[](512);
