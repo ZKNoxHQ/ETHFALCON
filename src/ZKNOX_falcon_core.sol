@@ -109,7 +109,7 @@ function falcon_core(
     uint256[] memory ntth, // public key, compacted 16  coefficients of 16 bits per word
     uint256[] memory hashed // result of hashToPoint(signature.salt, msgs, q, n);
 )
-    view
+    pure
     returns (bool result)
 {
     if (hashed.length != 512) return false;

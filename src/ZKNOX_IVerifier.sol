@@ -51,3 +51,12 @@ interface ISigVerifier {
 
     function GetPublicKey(address _from) external view returns (uint256[] memory Kpub);
 }
+
+interface IVerifier {
+    function verify(bytes memory pubkey, bytes memory digest, bytes memory sig, bytes memory ctx)
+        external
+        view
+        returns (bool result);
+
+    // function GetPublicKey(address _from) external view returns (uint256[] memory Kpub);
+}
