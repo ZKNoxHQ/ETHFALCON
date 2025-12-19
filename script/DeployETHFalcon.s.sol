@@ -11,7 +11,7 @@ import {console} from "forge-std/Test.sol";
 contract Script_Deploy_Falcon is BaseScript {
     // SPDX-License-Identifier: MIT
 
-    function run() external {
+    function run() external returns (address) {
         vm.startBroadcast();
 
         bytes32 salty = keccak256(abi.encodePacked("ZKNOX_v0.14"));
@@ -45,5 +45,6 @@ contract Script_Deploy_Falcon is BaseScript {
         if (result == false) revert("verification failure");
 
         vm.stopBroadcast();
+        return address(ETHFALCON);
     }
 }
