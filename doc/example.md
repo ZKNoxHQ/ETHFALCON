@@ -7,7 +7,7 @@
 
 A signature is generated using Python and verified using Solidity following those steps.
 ```bash
-cd python-ref
+cd pythonref
 make install
 ```
 The public and private keys are generated using Python:

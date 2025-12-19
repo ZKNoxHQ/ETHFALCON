@@ -5,40 +5,12 @@ import {Test, console} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon_utils.sol";
 import "../src/ZKNOX_falcon.sol";
 import "../src/ZKNOX_falcon_deploy.sol";
-
-uint256 constant SALT_LEN = 40;
-
-function _packUint256Array(uint256[32] memory arr) pure returns (bytes memory result) {
-    result = new bytes(1024); // 32 * 32
-    assembly {
-        let dst := add(result, 32)
-        let src := arr
-        for { let i := 0 } lt(i, 32) { i := add(i, 1) } {
-            mstore(add(dst, mul(i, 32)), mload(add(src, mul(i, 32))))
-        }
-    }
-}
-
-function _packSignature(bytes memory salt, uint256[32] memory s2) pure returns (bytes memory result) {
-    result = new bytes(1064); // 40 + 1024
-
-    // Copy salt (40 bytes)
-    for (uint256 i = 0; i < 40; i++) {
-        result[i] = salt[i];
-    }
-
-    // Copy s2 (1024 bytes)
-    assembly {
-        let dst := add(add(result, 32), 40)
-        let src := s2
-        for { let i := 0 } lt(i, 32) { i := add(i, 1) } {
-            mstore(add(dst, mul(i, 32)), mload(add(src, mul(i, 32))))
-        }
-    }
-}
+import "../src/ZKNOX_common.sol";
+import {PythonSigner} from "../src/ZKNOX_PythonSigner.sol";
 
 contract ZKNOX_FalconTest is Test {
     ZKNOX_falcon falcon = new ZKNOX_falcon();
+    PythonSigner pythonSigner = new PythonSigner();
 
     function testVector0()
         public
@@ -172,18 +144,32 @@ uint256[32] memory tmp_s2 = [214124242421270827496101918395948293926093353199906
             s2[i] = tmp_s2[i];
         }
         // message = "Practical security on the chain."
-        bytes memory message =
+        bytes32 message =
             "\x50\x72\x61\x63\x74\x69\x63\x61\x6c\x20\x73\x65\x63\x75\x72\x69\x74\x79\x20\x6f\x6e\x20\x74\x68\x65\x20\x63\x68\x61\x69\x6e\x2e";
         bytes memory salt =
             "\xc3\xff\x24\xbc\x6b\x6d\x7a\x3d\x30\x7c\xe7\xb1\x73\x1e\x7d\xf5\x96\x90\xd0\x53\x0d\x7f\x2f\x5b\xb9\xed\x37\xd1\x80\x16\x9a\x6c\x1b\xb0\x22\x25\x2a\xb8\xcc\x68";
-        bool result = falcon.verify(message, salt, s2, pkc);
+        bool result = falcon.verify(abi.encodePacked(message), salt, s2, pkc);
         assertEq(true, result);
 
         // Pack pour la nouvelle interface
         bytes memory pubkey = _packUint256Array(tmp_pkc);
         bytes memory sig = _packSignature(salt, tmp_s2);
 
-        result = falcon.verify(pubkey, message, sig, message);
-        assertEq(true, result);
+        bytes4 result2 = falcon.verify(pubkey, message, sig);
+        assertEq(result2, IERC7913SignatureVerifier.verify.selector);
+    }
+
+    function testSignVerify() public {
+            string memory seed_str = "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe";
+            // message = "Practical security on the chain."
+            bytes32 message =
+            "\x50\x72\x61\x63\x74\x69\x63\x61\x6c\x20\x73\x65\x63\x75\x72\x69\x74\x79\x20\x6f\x6e\x20\x74\x68\x65\x20\x63\x68\x61\x69\x6e\x2e";
+            string memory message_str = "0x50726163746963616c207365637572697479206f6e2074686520636861696e2e";
+            
+            (uint256[32] memory pk_compact, bytes memory salt, uint256[32] memory s2_compact) = pythonSigner.sign("pythonref",  message_str, "NIST", seed_str);
+            bytes memory pubkey = _packUint256Array(pk_compact);
+            bytes memory sig = _packSignature(salt, s2_compact);
+            bytes4 result = falcon.verify(pubkey, message, sig);
+            assertEq(result, IERC7913SignatureVerifier.verify.selector);
     }
 }

@@ -4,13 +4,14 @@ out = "out"
 libs = ["lib"]
 optimizer = true
 optimizer_runs = 10000
-evm_version = "prague"
+evm_version = "cancun"
 solc_version = "0.8.25"
 fs_permissions = [{ access = "read", path = "./test/" }]
 gas_limit = 72057594037927935  # 2^56 - 1 (JavaScript-friendly)
+ffi = true
 
 [profile.lite]
 optimizer = false
-evm_version = "prague"
+evm_version = "cancun"
 solc_version = "0.8.25"
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

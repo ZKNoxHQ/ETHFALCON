@@ -4,7 +4,7 @@ ETHFALCON gather experimentations around FALCON adaptations for the ETHEREUM eco
 This repo provides:
 
 * on-chain [contracts](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/src) for verification
-* [python](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/python-ref) signers and verification for testing (offchain and on-chain wrapping cast).
+* [python](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/pythonref) signers and verification for testing (offchain and on-chain wrapping cast).
 
 
 **This is an experimental work, not audited: DO NOT USE IN PRODUCTION, LOSS OF FUND WILL OCCUR.**
