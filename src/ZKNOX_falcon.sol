@@ -39,10 +39,10 @@
 pragma solidity ^0.8.25;
 
 import "./ZKNOX_common.sol";
-import "./ZKNOX_IVerifier.sol";
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_falcon_core.sol";
 import "./ZKNOX_HashToPoint.sol";
+import {IERC7913SignatureVerifier} from "openzeppelin-contracts/contracts/interfaces/IERC7913.sol";
 
 /// @title ZKNOX_falcon
 /// @notice A contract to verify FALCON signatures
@@ -50,7 +50,7 @@ import "./ZKNOX_HashToPoint.sol";
 
 /// @custom:experimental This library is not audited yet, do not use in production.
 
-contract ZKNOX_falcon is ISigVerifier {
+contract ZKNOX_falcon is IERC7913SignatureVerifier {
     // ZKNOX_NTT ntt;
     address public psirev;
     address public psiInvrev;
@@ -93,7 +93,7 @@ contract ZKNOX_falcon is ISigVerifier {
         uint256[] memory ntth // public key, compacted representing coefficients over 16 bits
     )
         external
-        view
+        pure
         returns (bool result)
     {
         // if (h.length != 32) return false;
@@ -118,84 +118,72 @@ contract ZKNOX_falcon is ISigVerifier {
         return result;
     }
 
-    uint256 constant SALT_LEN = 40;
+    function verify(bytes calldata _pubkey, bytes32 _digest, bytes calldata _sig) external view returns (bytes4) {
+        bytes memory pubkey = _pubkey;
+        bytes memory digest = abi.encodePacked(_digest);
+        bytes memory sig = _sig;
 
-    function verify(bytes memory pubkey, bytes memory digest, bytes memory sig, bytes memory ctx)
-        external
-        view
-        returns (bool result)
-    {
-        bytes memory salt;
-        uint256[] memory s2;
-        uint256[] memory ntth;
+        uint256 saltPtr;
+        uint256 s2Ptr;
+        uint256 ntthPtr;
 
         assembly {
-            let sigLen := mload(sig)
-            let pubkeyLen := mload(pubkey)
-
-            // === Salt: copy to fresh memory ===
+            // === Salt ===
             let freePtr := mload(0x40)
-            salt := freePtr
-            mstore(salt, SALT_LEN)
-
+            saltPtr := freePtr
+            mstore(saltPtr, SALT_LEN)
             let src := add(sig, 32)
-            let dst := add(salt, 32)
+            let dst := add(saltPtr, 32)
             for { let i := 0 } lt(i, SALT_LEN) { i := add(i, 32) } {
                 mstore(add(dst, i), mload(add(src, i)))
             }
 
-            // Update free memory pointer
             let saltAllocSize := and(add(SALT_LEN, 31), not(31))
             freePtr := add(freePtr, add(32, saltAllocSize))
 
-            // === s2: write length at s2DataStart - 32, reuse sig memory ===
+            // === s2 ===
             let s2DataStart := add(src, SALT_LEN)
             let s2LengthSlot := sub(s2DataStart, 32)
-            let s2Count := div(sub(sigLen, SALT_LEN), 32)
 
-            // Save values for restoration in allocated memory
-            let savedS2Slot := mload(s2LengthSlot)
-
-            // Allocate space for saved values (3 * 32 = 96 bytes)
             let savedPtr := freePtr
-            mstore(savedPtr, sigLen)
-            mstore(add(savedPtr, 32), pubkeyLen)
-            mstore(add(savedPtr, 64), savedS2Slot)
-            mstore(0x40, add(savedPtr, 96)) // Update free memory pointer
+            mstore(savedPtr, mload(sig))
+            mstore(add(savedPtr, 32), mload(pubkey))
+            mstore(add(savedPtr, 64), mload(s2LengthSlot))
+            mstore(0x40, add(savedPtr, 96))
 
-            mstore(s2LengthSlot, s2Count)
-            s2 := s2LengthSlot
+            mstore(s2LengthSlot, div(sub(mload(sig), SALT_LEN), 32))
+            s2Ptr := s2LengthSlot
 
-            // === ntth: reinterpret pubkey bytes as uint256[] ===
-            let ntthCount := div(pubkeyLen, 32)
-            mstore(pubkey, ntthCount)
-            ntth := pubkey
+            // === ntth ===
+            mstore(pubkey, div(mload(pubkey), 32))
+            ntthPtr := pubkey
         }
 
-        uint256[] memory hashed = hashToPointNIST(salt, digest);
-
-        result = falcon_core(s2, ntth, hashed);
+        bool result = this.verify(digest, _ptrToBytes(saltPtr), _ptrToUint256Array(s2Ptr), _ptrToUint256Array(ntthPtr));
 
         assembly {
-            // Retrieve saved values from end of salt allocation
-            let saltAllocSize := and(add(SALT_LEN, 31), not(31))
-            let savedPtr := add(salt, add(32, saltAllocSize))
-
-            let sigLen := mload(savedPtr)
-            let pubkeyLen := mload(add(savedPtr, 32))
-            let savedS2Slot := mload(add(savedPtr, 64))
-
-            // Restore original values
-            mstore(sig, sigLen)
-            mstore(pubkey, pubkeyLen)
-
-            let s2LengthSlot := add(sig, SALT_LEN)
-            mstore(s2LengthSlot, savedS2Slot)
+            let savedPtr := sub(mload(0x40), 96)
+            mstore(sig, mload(savedPtr))
+            mstore(pubkey, mload(add(savedPtr, 32)))
+            mstore(add(sig, SALT_LEN), mload(add(savedPtr, 64)))
         }
+
+        if (result) {
+            return IERC7913SignatureVerifier.verify.selector;
+        }
+        return 0xFFFFFFFF;
+    }
+
+    function _ptrToBytes(uint256 ptr) private pure returns (bytes memory result) {
+        assembly { result := ptr }
+    }
+
+    function _ptrToUint256Array(uint256 ptr) private pure returns (uint256[] memory result) {
+        assembly { result := ptr }
     }
 
     //extract the ntt representation of the public key deployed at the _from address input
-    function GetPublicKey(address _from) external view override returns (uint256[] memory Kpub) {
+    function GetPublicKey(address _from) external view returns (uint256[] memory Kpub) {
         Kpub = new uint256[](32);
 
         assembly {
