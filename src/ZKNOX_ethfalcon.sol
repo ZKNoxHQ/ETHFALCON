@@ -63,7 +63,7 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         return true;
     }
 
-    function setKey(bytes memory pubkey) external returns (bytes memory) {
+    function setKey(bytes memory pubkey) external pure returns (bytes memory) {
         return pubkey;
     }
 
