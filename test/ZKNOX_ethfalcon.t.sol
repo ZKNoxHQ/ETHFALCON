@@ -162,7 +162,7 @@ uint256[32] memory tmp_s2 = [211441854759083842512918481276584518401186683971206
         bytes memory pubkey = _packUint256Array(pk_compact);
         bytes memory sig = _packSignature(salt, s2_compact);
         bytes4 result = falcon.verify(pubkey, message, sig);
-        assertEq(result, IERC7913SignatureVerifier.verify.selector);
+        assertEq(result, ISigVerifier.verify.selector);
     }
 
 }

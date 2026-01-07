@@ -42,7 +42,7 @@ import "./ZKNOX_common.sol";
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_falcon_core.sol";
 import "./ZKNOX_HashToPoint.sol";
-import {IERC7913SignatureVerifier} from "openzeppelin-contracts/contracts/interfaces/IERC7913.sol";
+import {ISigVerifier} from "InterfaceVerifier/IVerifier.sol";
 
 /// @title ZKNOX_falcon
 /// @notice A contract to verify FALCON signatures
@@ -50,7 +50,7 @@ import {IERC7913SignatureVerifier} from "openzeppelin-contracts/contracts/interf
 
 /// @custom:experimental This library is not audited yet, do not use in production.
 
-contract ZKNOX_falcon is IERC7913SignatureVerifier {
+contract ZKNOX_falcon is ISigVerifier {
     // ZKNOX_NTT ntt;
     address public psirev;
     address public psiInvrev;
@@ -77,6 +77,11 @@ contract ZKNOX_falcon is IERC7913SignatureVerifier {
 
         return true;
     }
+
+    function setKey(bytes memory pubkey) external returns (bytes memory) {
+        return pubkey;
+    }
+
 
     /// @notice Compute the  falcon NIST verification function
 
@@ -169,7 +174,7 @@ contract ZKNOX_falcon is IERC7913SignatureVerifier {
         }
 
         if (result) {
-            return IERC7913SignatureVerifier.verify.selector;
+            return ISigVerifier.verify.selector;
         }
         return 0xFFFFFFFF;
     }

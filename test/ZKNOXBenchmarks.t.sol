@@ -113,11 +113,11 @@ contract Benchmark is Test {
         uint256[] memory kpub;
         uint256[] memory s2;
         bytes memory salt;
-        bytes memory message;
+        bytes memory m;
 
         uint256 gasStart = gasleft();
         // KAT vector 0 has mlen = 33
-        (kpub, s2, salt, message) = decompress_KAT(pk, sm, 33);
+        (kpub, s2, salt, m) = decompress_KAT(pk, sm, 33);
         uint256[] memory ntth = _ZKNOX_NTT_Compact(_ZKNOX_NTTFW_vectorized(kpub));
         uint256 gasUsed = gasStart - gasleft();
         console.log("Decompress KAT cost:   ", gasUsed);

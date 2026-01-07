@@ -39,7 +39,7 @@
 pragma solidity ^0.8.25;
 
 import "./ZKNOX_common.sol";
-import {IERC7913SignatureVerifier} from "openzeppelin-contracts/contracts/interfaces/IERC7913.sol";
+import {ISigVerifier} from "InterfaceVerifier/IVerifier.sol";
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_falcon_core.sol";
 import "./ZKNOX_HashToPoint.sol";
@@ -50,7 +50,7 @@ import "./ZKNOX_HashToPoint.sol";
 
 /// @custom:experimental This library is not audited yet, do not use in production.
 
-contract ZKNOX_ethfalcon is IERC7913SignatureVerifier {
+contract ZKNOX_ethfalcon is ISigVerifier {
     function CheckParameters(bytes memory salt, uint256[] memory s2, uint256[] memory ntth)
         internal
         pure
@@ -61,6 +61,10 @@ contract ZKNOX_ethfalcon is IERC7913SignatureVerifier {
         if (s2.length != falcon_S256) return false; //"Invalid salt length"
 
         return true;
+    }
+
+    function setKey(bytes memory pubkey) external returns (bytes memory) {
+        return pubkey;
     }
 
     /// @notice Compute the  ethfalcon verification function
@@ -153,7 +157,7 @@ contract ZKNOX_ethfalcon is IERC7913SignatureVerifier {
         }
 
         if (result) {
-            return IERC7913SignatureVerifier.verify.selector;
+            return ISigVerifier.verify.selector;
         }
         return 0xFFFFFFFF;
     }

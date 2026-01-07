@@ -13,6 +13,7 @@ install_verifier:
 	foundryup
 	forge install OpenZeppelin/openzeppelin-contracts-upgradeable
 	forge install OpenZeppelin/openzeppelin-contracts
+	forge install ZKNOXHQ/InterfaceVerifier
 
 # GENERATION OF TEST VECTORS
 

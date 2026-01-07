@@ -156,7 +156,7 @@ uint256[32] memory tmp_s2 = [214124242421270827496101918395948293926093353199906
         bytes memory sig = _packSignature(salt, tmp_s2);
 
         bytes4 result2 = falcon.verify(pubkey, message, sig);
-        assertEq(result2, IERC7913SignatureVerifier.verify.selector);
+        assertEq(result2, ISigVerifier.verify.selector);
     }
 
     function testSignVerify() public {
@@ -170,6 +170,6 @@ uint256[32] memory tmp_s2 = [214124242421270827496101918395948293926093353199906
             bytes memory pubkey = _packUint256Array(pk_compact);
             bytes memory sig = _packSignature(salt, s2_compact);
             bytes4 result = falcon.verify(pubkey, message, sig);
-            assertEq(result, IERC7913SignatureVerifier.verify.selector);
+            assertEq(result, ISigVerifier.verify.selector);
     }
 }
