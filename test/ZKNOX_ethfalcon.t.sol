@@ -155,14 +155,14 @@ uint256[32] memory tmp_s2 = [211441854759083842512918481276584518401186683971206
         string memory seed_str = "cafecafecafecafecafecafecafecafecafecafecafecafecafecafecafecafe";
         // message = "Practical security on the chain."
         bytes32 message =
-        "\x50\x72\x61\x63\x74\x69\x63\x61\x6c\x20\x73\x65\x63\x75\x72\x69\x74\x79\x20\x6f\x6e\x20\x74\x68\x65\x20\x63\x68\x61\x69\x6e\x2e";
+            "\x50\x72\x61\x63\x74\x69\x63\x61\x6c\x20\x73\x65\x63\x75\x72\x69\x74\x79\x20\x6f\x6e\x20\x74\x68\x65\x20\x63\x68\x61\x69\x6e\x2e";
         string memory message_str = "0x50726163746963616c207365637572697479206f6e2074686520636861696e2e";
-        
-        (uint256[32] memory pk_compact, bytes memory salt, uint256[32] memory s2_compact) = pythonSigner.sign("pythonref",  message_str, "ETH", seed_str);
+
+        (uint256[32] memory pk_compact, bytes memory salt, uint256[32] memory s2_compact) =
+            pythonSigner.sign("pythonref", message_str, "ETH", seed_str);
         bytes memory pubkey = _packUint256Array(pk_compact);
         bytes memory sig = _packSignature(salt, s2_compact);
         bytes4 result = falcon.verify(pubkey, message, sig);
         assertEq(result, ISigVerifier.verify.selector);
     }
-
 }

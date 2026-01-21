@@ -82,7 +82,6 @@ contract ZKNOX_falcon is ISigVerifier {
         return pubkey;
     }
 
-
     /// @notice Compute the  falcon NIST verification function
 
     /// @param h the hash of message to be signed, expected length is 32 bytes

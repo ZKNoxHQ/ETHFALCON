@@ -57,6 +57,7 @@ function rol64(uint256 x, uint256 s) pure returns (uint64) {
     return (uint64)((x << s) ^ (x >> (64 - s)));
 }
 
+// OPTIMIZATION: F1600 with unrolled Theta step 2 and Chi - eliminates addmod calls
 function F1600(uint64[25] memory state) pure returns (uint64[25] memory) {
     // forgefmt: disable-next-line
     uint256[24] memory _KECCAK_PI = [uint256(10), 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1];// forgefmt: disable-next-line
@@ -67,45 +68,81 @@ function F1600(uint64[25] memory state) pure returns (uint64[25] memory) {
 
     //console.log("F1600");
 
-    assembly {
-        for { let i := 0 } gt(24, i) { i := add(i, 1) } {
+    assembly ("memory-safe") {
+        for { let i := 0 } lt(i, 24) { i := add(i, 1) } {
             //
             let t
             let offset_X
-            for { offset_X := 0 } gt(160, offset_X) { offset_X := add(offset_X, 32) } {
+
+            // ==================== THETA STEP 1 ====================
+            // Optimized: removed redundant mstore(bc,0) then mload(bc)
+            for { offset_X := 0 } lt(offset_X, 160) { offset_X := add(offset_X, 32) } {
                 //for (uint256 x = 0; x < 5; x++)
-                mstore(add(bc, offset_X), 0) //bc[x] = 0;
-
-                let bcx := add(bc, offset_X)
-                let temp := mload(bcx)
-                for { let offset_Y := 0 } gt(800, offset_Y) { offset_Y := add(offset_Y, 160) } {
-                    temp := xor(temp, mload(add(state, add(offset_X, offset_Y)))) // bc[x] ^= state[x + y];
-                }
-                mstore(bcx, temp)
+                let temp := mload(add(state, offset_X))
+                temp := xor(temp, mload(add(state, add(offset_X, 160))))
+                temp := xor(temp, mload(add(state, add(offset_X, 320))))
+                temp := xor(temp, mload(add(state, add(offset_X, 480))))
+                temp := xor(temp, mload(add(state, add(offset_X, 640))))
+                mstore(add(bc, offset_X), temp)
             }
 
-            //# Theta
-            // for (uint256 x = 0; x < 5; x++) {
-            for { let x := 0 } gt(160, x) { x := add(32, x) } {
-                //t = bc[addmod(x, 4, 5)] ^ rol64(bc[addmod(x, 1, 5)], 1);
-                let temp := mload(add(bc, addmod(x, 32, 160)))
-                t := and(0xffffffffffffffff, xor(shl(1, temp), shr(63, temp))) //rol64(bc[addmod(x, 1, 5)], 1);
-                t := xor(t, mload(add(bc, addmod(x, 128, 160)))) //beware of and
-
-                /*
-                for (uint64 y = 0; y < 25; y += 5) {
-                    // in range(0, 25, 5):
-                    state[y + x] ^= t;
-                }*/
-
-                let endloop := add(add(state, x), 800)
-                for { let offset := add(state, x) } gt(endloop, offset) { offset := add(offset, 160) } {
-                    mstore(offset, xor(mload(offset), t))
-                }
+            // ==================== THETA STEP 2 ====================
+            // OPTIMIZATION: Unrolled to eliminate addmod calls
+            // x=0: d = bc[4] ^ rol64(bc[1], 1)
+            {
+                let bc1 := mload(add(bc, 32))
+                let d := xor(mload(add(bc, 128)), and(0xffffffffffffffff, xor(shl(1, bc1), shr(63, bc1))))
+                mstore(state, xor(mload(state), d))
+                mstore(add(state, 160), xor(mload(add(state, 160)), d))
+                mstore(add(state, 320), xor(mload(add(state, 320)), d))
+                mstore(add(state, 480), xor(mload(add(state, 480)), d))
+                mstore(add(state, 640), xor(mload(add(state, 640)), d))
             }
+            // x=1: d = bc[0] ^ rol64(bc[2], 1)
+            {
+                let bc2 := mload(add(bc, 64))
+                let d := xor(mload(bc), and(0xffffffffffffffff, xor(shl(1, bc2), shr(63, bc2))))
+                mstore(add(state, 32), xor(mload(add(state, 32)), d))
+                mstore(add(state, 192), xor(mload(add(state, 192)), d))
+                mstore(add(state, 352), xor(mload(add(state, 352)), d))
+                mstore(add(state, 512), xor(mload(add(state, 512)), d))
+                mstore(add(state, 672), xor(mload(add(state, 672)), d))
+            }
+            // x=2: d = bc[1] ^ rol64(bc[3], 1)
+            {
+                let bc3 := mload(add(bc, 96))
+                let d := xor(mload(add(bc, 32)), and(0xffffffffffffffff, xor(shl(1, bc3), shr(63, bc3))))
+                mstore(add(state, 64), xor(mload(add(state, 64)), d))
+                mstore(add(state, 224), xor(mload(add(state, 224)), d))
+                mstore(add(state, 384), xor(mload(add(state, 384)), d))
+                mstore(add(state, 544), xor(mload(add(state, 544)), d))
+                mstore(add(state, 704), xor(mload(add(state, 704)), d))
+            }
+            // x=3: d = bc[2] ^ rol64(bc[4], 1)
+            {
+                let bc4 := mload(add(bc, 128))
+                let d := xor(mload(add(bc, 64)), and(0xffffffffffffffff, xor(shl(1, bc4), shr(63, bc4))))
+                mstore(add(state, 96), xor(mload(add(state, 96)), d))
+                mstore(add(state, 256), xor(mload(add(state, 256)), d))
+                mstore(add(state, 416), xor(mload(add(state, 416)), d))
+                mstore(add(state, 576), xor(mload(add(state, 576)), d))
+                mstore(add(state, 736), xor(mload(add(state, 736)), d))
+            }
+            // x=4: d = bc[3] ^ rol64(bc[0], 1)
+            {
+                let bc0 := mload(bc)
+                let d := xor(mload(add(bc, 96)), and(0xffffffffffffffff, xor(shl(1, bc0), shr(63, bc0))))
+                mstore(add(state, 128), xor(mload(add(state, 128)), d))
+                mstore(add(state, 288), xor(mload(add(state, 288)), d))
+                mstore(add(state, 448), xor(mload(add(state, 448)), d))
+                mstore(add(state, 608), xor(mload(add(state, 608)), d))
+                mstore(add(state, 768), xor(mload(add(state, 768)), d))
+            }
+
+            // ==================== RHO + PI ====================
             t := mload(add(state, 32)) //t=state[1]
 
-            for { let x := 0 } gt(768, x) { x := add(x, 32) } {
+            for { let x := 0 } lt(x, 768) { x := add(x, 32) } {
                 //x in [0..23]
                 //  for (uint256 x = 0; x < 24; x++) {
                 let keccakpix := mload(add(_KECCAK_PI, x)) //_KECCAK_PI[x]
@@ -118,39 +155,91 @@ function F1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 t := mload(bc) // t = bc[0];
             }
 
-            for { let y := 0 } gt(800, y) { y := add(y, 160) } {
-                // for (uint256 y = 0; y < 25; y += 5) {
-                for { offset_X := 0 } gt(160, offset_X) { offset_X := add(offset_X, 32) } {
-                    //for (uint256 x = 0; x < 5; x++) {
-                    mstore(add(bc, offset_X), mload(add(state, add(offset_X, y)))) //  bc[x] = state[y + x];
-                }
+            // ==================== CHI ====================
+            // OPTIMIZATION: Unrolled y loop to eliminate addmod calls
+            let rc := mload(add(_KECCAK_RC, shl(5, i)))
 
-                let offset_Y := add(state, y)
+            // y=0
+            {
+                let c0 := mload(state)
+                let c1 := mload(add(state, 32))
+                let c2 := mload(add(state, 64))
+                let c3 := mload(add(state, 96))
+                let c4 := mload(add(state, 128))
+                mstore(state, xor(c0, and(xor(c1, 0xffffffffffffffff), c2)))
+                mstore(add(state, 32), xor(c1, and(xor(c2, 0xffffffffffffffff), c3)))
+                mstore(add(state, 64), xor(c2, and(xor(c3, 0xffffffffffffffff), c4)))
+                mstore(add(state, 96), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
+                mstore(add(state, 128), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
+            }
+            mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff)) //state[0] ^= _KECCAK_RC[i];
 
-                for { offset_X := 0 } gt(160, offset_X) { offset_X := add(offset_X, 32) } {
-                    let offset := add(offset_X, offset_Y) //address of state[x+y]
+            // y=1
+            {
+                let c0 := mload(add(state, 160))
+                let c1 := mload(add(state, 192))
+                let c2 := mload(add(state, 224))
+                let c3 := mload(add(state, 256))
+                let c4 := mload(add(state, 288))
+                mstore(add(state, 160), xor(c0, and(xor(c1, 0xffffffffffffffff), c2)))
+                mstore(add(state, 192), xor(c1, and(xor(c2, 0xffffffffffffffff), c3)))
+                mstore(add(state, 224), xor(c2, and(xor(c3, 0xffffffffffffffff), c4)))
+                mstore(add(state, 256), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
+                mstore(add(state, 288), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
+            }
+            mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
 
-                    mstore(
-                        offset,
-                        xor(
-                            mload(add(offset_X, bc)),
-                            and(
-                                xor(mload(add(bc, addmod(offset_X, 32, 160))), 0xffffffffffffffff),
-                                mload(add(bc, addmod(offset_X, 64, 160)))
-                            )
-                        )
-                    )
-                }
+            // y=2
+            {
+                let c0 := mload(add(state, 320))
+                let c1 := mload(add(state, 352))
+                let c2 := mload(add(state, 384))
+                let c3 := mload(add(state, 416))
+                let c4 := mload(add(state, 448))
+                mstore(add(state, 320), xor(c0, and(xor(c1, 0xffffffffffffffff), c2)))
+                mstore(add(state, 352), xor(c1, and(xor(c2, 0xffffffffffffffff), c3)))
+                mstore(add(state, 384), xor(c2, and(xor(c3, 0xffffffffffffffff), c4)))
+                mstore(add(state, 416), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
+                mstore(add(state, 448), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
+            }
+            mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
 
-                mstore(state, and(xor(mload(state), mload(add(_KECCAK_RC, shl(5, i)))), 0xffffffffffffffff)) //state[0] ^= _KECCAK_RC[i];
-            } //end loop y
+            // y=3
+            {
+                let c0 := mload(add(state, 480))
+                let c1 := mload(add(state, 512))
+                let c2 := mload(add(state, 544))
+                let c3 := mload(add(state, 576))
+                let c4 := mload(add(state, 608))
+                mstore(add(state, 480), xor(c0, and(xor(c1, 0xffffffffffffffff), c2)))
+                mstore(add(state, 512), xor(c1, and(xor(c2, 0xffffffffffffffff), c3)))
+                mstore(add(state, 544), xor(c2, and(xor(c3, 0xffffffffffffffff), c4)))
+                mstore(add(state, 576), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
+                mstore(add(state, 608), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
+            }
+            mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
 
+            // y=4
+            {
+                let c0 := mload(add(state, 640))
+                let c1 := mload(add(state, 672))
+                let c2 := mload(add(state, 704))
+                let c3 := mload(add(state, 736))
+                let c4 := mload(add(state, 768))
+                mstore(add(state, 640), xor(c0, and(xor(c1, 0xffffffffffffffff), c2)))
+                mstore(add(state, 672), xor(c1, and(xor(c2, 0xffffffffffffffff), c3)))
+                mstore(add(state, 704), xor(c2, and(xor(c3, 0xffffffffffffffff), c4)))
+                mstore(add(state, 736), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
+                mstore(add(state, 768), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
+            }
+            mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
         } //end loop i
 
     }
     return state;
 } //end F1600
 
+// OPTIMIZATION: unchecked for bounded loop variables
 function shake_absorb(uint256 i, uint8[200] memory buf, uint64[25] memory state, bytes memory input)
     pure
     returns (uint256 iout, uint8[200] memory bufout, uint64[25] memory stateout)
@@ -159,25 +248,27 @@ function shake_absorb(uint256 i, uint8[200] memory buf, uint64[25] memory state,
 
     //console.log("todo=", todo);
     uint256 index = 0;
-    while (todo > 0) {
-        uint256 cando = _RATE - i;
-        uint256 willabsorb = (cando < todo) ? cando : todo;
-        //console.log("cndo=", cando);
-        //console.log("willabsorb=", willabsorb);
+    unchecked {
+        while (todo > 0) {
+            uint256 cando = _RATE - i;
+            uint256 willabsorb = (cando < todo) ? cando : todo;
+            //console.log("cndo=", cando);
+            //console.log("willabsorb=", willabsorb);
 
-        for (uint256 j = 0; j < willabsorb; j++) {
-            buf[i + j] ^= uint8(input[index + j]);
+            for (uint256 j = 0; j < willabsorb; j++) {
+                buf[i + j] ^= uint8(input[index + j]);
+            }
+            i += willabsorb;
+
+            //console.log("i=", i);
+            if (i == _RATE) {
+                (buf, state) = shake_permute(buf, state);
+
+                i = 0;
+            }
+            todo -= willabsorb;
+            index += willabsorb;
         }
-        i += willabsorb;
-
-        //console.log("i=", i);
-        if (i == _RATE) {
-            (buf, state) = shake_permute(buf, state);
-
-            i = 0;
-        }
-        todo -= willabsorb;
-        index += willabsorb;
     }
 
     return (i, buf, state);
@@ -203,28 +294,31 @@ function shake_update(ctx_shake memory ctx, bytes memory input) pure returns (ct
     return ctxout;
 }
 
+// OPTIMIZATION: unchecked for bounded loop variables
 function shake_squeeze(ctx_shake memory ctx, uint256 n) pure returns (ctx_shake memory ctxout, bytes memory) {
     bytes memory output = new bytes(n);
     uint256 tosqueeze = n;
     uint256 offset = 0;
 
-    while (tosqueeze > 0) {
-        uint256 cansqueeze = _RATE - ctx.i;
-        uint256 willsqueeze = (cansqueeze < tosqueeze) ? cansqueeze : tosqueeze;
+    unchecked {
+        while (tosqueeze > 0) {
+            uint256 cansqueeze = _RATE - ctx.i;
+            uint256 willsqueeze = (cansqueeze < tosqueeze) ? cansqueeze : tosqueeze;
 
-        for (uint256 j = 0; j < willsqueeze; j++) {
-            uint256 read = ctx.i + j;
+            for (uint256 j = 0; j < willsqueeze; j++) {
+                uint256 read = ctx.i + j;
 
-            output[offset + j] = bytes1(uint8((ctx.state[(read >> 3)] >> ((read & 7) << 3)) & 0xff));
+                output[offset + j] = bytes1(uint8((ctx.state[(read >> 3)] >> ((read & 7) << 3)) & 0xff));
+            }
+            //console.logBytes(output);
+            offset += willsqueeze;
+            ctx.i += willsqueeze;
+            if (ctx.i == _RATE) {
+                (ctx.buff, ctx.state) = shake_permute(ctx.buff, ctx.state);
+                ctx.i = 0;
+            }
+            tosqueeze -= willsqueeze;
         }
-        //console.logBytes(output);
-        offset += willsqueeze;
-        ctx.i += willsqueeze;
-        if (ctx.i == _RATE) {
-            (ctx.buff, ctx.state) = shake_permute(ctx.buff, ctx.state);
-            ctx.i = 0;
-        }
-        tosqueeze -= willsqueeze;
     }
 
     return (ctx, output);
@@ -240,7 +334,7 @@ function shake_permute(uint8[200] memory buf, uint64[25] memory state)
     }*/
 
     assembly {
-        for { let j := 0 } gt(200, j) { j := add(j, 1) } {
+        for { let j := 0 } lt(j, 200) { j := add(j, 1) } {
             let addr := add(state, shl(5, shr(3, j))) //state[j / 8]
             let val := shl(shl(3, and(j, 7)), and(0xffffffffffffffff, mload(add(buf, shl(5, j))))) // uint64(buf[j]) << (((uint8(j & 0x7) << 3)));
 
