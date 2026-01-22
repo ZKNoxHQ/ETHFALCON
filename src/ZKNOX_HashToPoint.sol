@@ -102,7 +102,7 @@ function hashToPointNIST(bytes memory salt, bytes memory msgHash) pure returns (
     ctx = shake_update(ctx, abi.encodePacked(salt, msgHash));
     ctx = shake_pad(ctx);
     (ctx, tmp) = shake_squeeze(ctx, _RATE);
-    
+
     unchecked {
         while (i < n) {
             if (j == _RATE) {

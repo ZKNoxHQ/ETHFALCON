@@ -86,7 +86,7 @@ function _ZKNOX_NTTFW_vectorized(uint256[] memory a) pure returns (uint256[] mem
 
     assembly ("memory-safe") {
         let aBase := add(a, 32) // OPTIMIZATION: base address computed once
-        
+
         for {} lt(m, n) {} {
             //while(m<n)
             t := shr(1, t)
@@ -125,7 +125,7 @@ function _ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b) pure returns (
         let bPtr := add(b, 32)
         let resPtr := add(res, 32)
         let endPtr := add(resPtr, shl(5, n)) // n * 32
-        
+
         for {} lt(resPtr, endPtr) {} {
             mstore(resPtr, mulmod(mload(aPtr), mload(bPtr), q))
             aPtr := add(aPtr, 32)
@@ -179,14 +179,14 @@ function _ZKNOX_NTTINV_vectorized(uint256[] memory a) pure returns (uint256[] me
 
     assembly ("memory-safe") {
         let aBase := add(a, 32) // OPTIMIZATION: base address computed once
-        
+
         for {} gt(m, 1) {} {
             // while(m > 1)
             let j1 := 0
             let h := shr(1, m) //uint h = m>>1;
             let t32 := shl(5, t) // OPTIMIZATION: mul(t, 32) hoisted out of j loop
             let t2 := shl(1, t) // OPTIMIZATION: 2*t for j1 increment
-            
+
             for { let i := 0 } lt(i, h) { i := add(i, 1) } {
                 let jEnd := add(j1, t) // OPTIMIZATION: precalculated loop bound
                 let hi := add(h, i)
@@ -206,6 +206,7 @@ function _ZKNOX_NTTINV_vectorized(uint256[] memory a) pure returns (uint256[] me
             t := shl(1, t)
             m := shr(1, m)
         } //end while
+
 
         // OPTIMIZATION: use constant n instead of mload(a)
         for { let j := 0 } lt(j, n) { j := add(j, 1) } {

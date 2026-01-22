@@ -49,7 +49,7 @@ function falcon_checkPolynomialRange(uint256[] memory polynomial, bool is_compac
     } else {
         a = polynomial;
     }
-    
+
     uint256 len = a.length;
     bool result = true;
     assembly ("memory-safe") {
