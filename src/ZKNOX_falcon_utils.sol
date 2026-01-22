@@ -57,21 +57,30 @@ uint256 constant q = 12289;
 uint256 constant qs1 = 6144; // q >> 1;
 uint256 constant kq = 61445;
 
+// OPTIMIZATION: Assembly implementation instead of Solidity loop
 function Swap(uint256[] memory Pol) pure returns (uint256[] memory Mirror) {
     Mirror = new uint256[](512);
-    for (uint256 i = 0; i < 512; i++) {
-        Mirror[511 - i] = Pol[i];
+    assembly ("memory-safe") {
+        let polPtr := add(Pol, 32)
+        let mirPtr := add(Mirror, 32)
+        // Mirror[511 - i] = Pol[i]
+        for { let i := 0 } lt(i, 512) { i := add(i, 1) } {
+            let srcOffset := shl(5, i) // i * 32
+            let dstOffset := shl(5, sub(511, i)) // (511-i) * 32
+            mstore(add(mirPtr, dstOffset), mload(add(polPtr, srcOffset)))
+        }
     }
 }
 
 //return the compacted version of an expanded polynomial
+// OPTIMIZATION: Added memory-safe annotation, use lt instead of gt
 function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b) {
     b = new uint256[](32);
 
-    assembly {
+    assembly ("memory-safe") {
         let aa := a
         let bb := add(b, 32)
-        for { let i := 0 } gt(512, i) { i := add(i, 1) } {
+        for { let i := 0 } lt(i, 512) { i := add(i, 1) } {
             aa := add(aa, 32)
             let bi := add(bb, mul(32, shr(4, i))) //shr(4,i)*32 !=shl(1,i)
             mstore(bi, xor(mload(bi), shl(shl(4, and(i, 0xf)), mload(aa))))
@@ -82,6 +91,7 @@ function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b
 }
 
 //return the expanded version of a compacted polynomial
+// OPTIMIZATION: Added memory-safe annotation, use lt instead of gt
 function _ZKNOX_NTT_Expand(uint256[] memory a) pure returns (uint256[] memory b) {
     b = new uint256[](512);
 
@@ -94,14 +104,14 @@ function _ZKNOX_NTT_Expand(uint256[] memory a) pure returns (uint256[] memory b)
     }
     */
 
-    assembly {
+    assembly ("memory-safe") {
         let aa := a
         let bb := add(b, 32)
-        for { let i := 0 } gt(32, i) { i := add(i, 1) } {
+        for { let i := 0 } lt(i, 32) { i := add(i, 1) } {
             aa := add(aa, 32)
             let ai := mload(aa)
 
-            for { let j := 0 } gt(16, j) { j := add(j, 1) } {
+            for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
                 mstore(add(bb, mul(32, add(j, shl(4, i)))), and(shr(shl(4, j), ai), 0xffff)) //b[(i << 4) + j] = (ai >> (j << 4)) & mask16;
             }
         }
@@ -111,6 +121,7 @@ function _ZKNOX_NTT_Expand(uint256[] memory a) pure returns (uint256[] memory b)
 }
 
 //decompress a polynomial starting at offset byte of buf
+// OPTIMIZATION: unchecked for bounded arithmetic
 function _ZKNOX_NTT_Decompress(bytes memory buf, uint256 offset) pure returns (uint256[] memory) {
     uint256[] memory x = new uint256[](512);
     uint32 acc = 0;
@@ -118,23 +129,25 @@ function _ZKNOX_NTT_Decompress(bytes memory buf, uint256 offset) pure returns (u
     uint256 u = 0;
     uint256 cpt = offset; //start with offset 1 to prune 0x09 header
 
-    while (u < n) {
-        acc = (acc << 8) | uint32(uint8(buf[cpt]));
-        cpt++;
+    unchecked {
+        while (u < n) {
+            acc = (acc << 8) | uint32(uint8(buf[cpt]));
+            cpt++;
 
-        acc_len += 8;
-        if (acc_len >= 14) {
-            uint32 w;
+            acc_len += 8;
+            if (acc_len >= 14) {
+                uint32 w;
 
-            acc_len -= 14;
-            w = (acc >> acc_len) & 0x3FFF;
-            if (w >= 12289) {
-                revert("wrong coeff");
-            }
-            x[u] = uint256(w);
-            u++;
-        } //end if
-    } //end while
+                acc_len -= 14;
+                w = (acc >> acc_len) & 0x3FFF;
+                if (w >= 12289) {
+                    revert("wrong coeff");
+                }
+                x[u] = uint256(w);
+                u++;
+            } //end if
+        } //end while
+    }
     if ((acc & ((1 << acc_len) - 1)) != 0) {
         revert();
     }
