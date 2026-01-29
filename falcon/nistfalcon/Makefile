@@ -19,17 +19,19 @@ OBJ1 = build/codec.o build/common.o build/fft.o build/fpr.o build/keygen.o build
 OBJ2 = build/PQCgenKAT_sign.o build/katrng.o
 OBJ3 = build/PQCgenKAT_sign_zknox.o build/katrng.o
 OBJ4 = build/PQCgenKAT_sign_epervier_zknox.o build/katrng.o
+OBJ5 = build/PQCgenKAT_hashtopoint.o build/katrng.o
+OBJ6 = build/PQCgenKAT_falconcore.o build/katrng.o
 
 HEAD1 = src/api.h src/fpr.h src/inner.h
 HEAD2 = src/api.h KAT/katrng.h
 
-all: build build/kat512int build/kat512int_zknox build/kat512int_epervier_zknox
+all: build build/kat512int build/kat512int_hashtopoint build/kat512int_falconcore build/kat512int_zknox build/kat512int_epervier_zknox
 
 build:
 	-mkdir build
 
 clean:
-	-rm -f build/kat512int build/kat512int_zknox build/kat512int_epervier_zknox $(OBJ1) $(OBJ2) $(OBJ3) $(OBJ4)
+	-rm -f build/kat512int build/kat512int_zknox build/kat512int_epervier_zknox build/kat512int_hashtopoint $(OBJ1) $(OBJ2) $(OBJ3) $(OBJ4) $(OBJ5)
 	find . -name '*.rsp' -delete
 	find . -name '*.req' -delete 
 	
@@ -41,6 +43,12 @@ build/kat512int_zknox: $(OBJ1) $(OBJ3)
 
 build/kat512int_epervier_zknox: $(OBJ1) $(OBJ4)
 	$(LD) $(LDFLAGS) -o build/kat512int_epervier_zknox $(OBJ1) $(OBJ4) $(LIBS)
+
+build/kat512int_hashtopoint: $(OBJ1) $(OBJ5)
+	$(LD) $(LDFLAGS) -o build/kat512int_hashtopoint $(OBJ1) $(OBJ5) $(LIBS)
+
+build/kat512int_falconcore: $(OBJ1) $(OBJ6)
+	$(LD) $(LDFLAGS) -o build/kat512int_falconcore $(OBJ1) $(OBJ6) $(LIBS)
 
 build/codec.o: src/codec.c $(HEAD1)
 	$(CC) $(CFLAGS) -c -o build/codec.o src/codec.c
@@ -87,5 +95,11 @@ build/PQCgenKAT_sign_zknox.o: KAT/PQCgenKAT_sign_zknox.c $(HEAD2)
 build/PQCgenKAT_sign_epervier_zknox.o: KAT/PQCgenKAT_sign_epervier_zknox.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_sign_epervier_zknox.o KAT/PQCgenKAT_sign_epervier_zknox.c
 	
+build/PQCgenKAT_hashtopoint.o: KAT/PQCgenKAT_hashtopoint.c $(HEAD2)
+	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_hashtopoint.o KAT/PQCgenKAT_hashtopoint.c
+
+build/PQCgenKAT_falconcore.o: KAT/PQCgenKAT_falconcore.c $(HEAD2)
+	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_falconcore.o KAT/PQCgenKAT_falconcore.c
+
 build/katrng.o: KAT/katrng.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -c -o build/katrng.o KAT/katrng.c

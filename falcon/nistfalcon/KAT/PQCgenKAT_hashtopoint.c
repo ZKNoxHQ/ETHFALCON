@@ -1,9 +1,9 @@
 
 //
-//  PQCgenKAT_sign.c
+//  PQCgenKAT_hashtopoint.c
 //
-//  Created by Bassham, Lawrence E (Fed) on 8/29/17.
-//  Copyright © 2017 Bassham, Lawrence E (Fed). All rights reserved.
+//  Created by Simon Masson
+//  Copyright © 2026 ZKNOX. All rights reserved.
 //
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,9 +11,9 @@
 #include <ctype.h>
 #include "katrng.h"
 #include "api.h"
+#include "inner.h"
 
 #define MAX_MARKER_LEN 50
-
 #define KAT_SUCCESS 0
 #define KAT_FILE_OPEN_ERROR -1
 #define KAT_DATA_ERROR -3
@@ -36,8 +36,8 @@ int main()
     char fn_req[32], fn_rsp[32];
 #endif
     FILE *fp_req, *fp_rsp;
-    unsigned char *m, *sm, *m1;
-    unsigned long long mlen, smlen, mlen1;
+    unsigned char *m;
+    unsigned long long mlen;
     int count;
     int done;
     int ret_val;
@@ -49,13 +49,17 @@ int main()
     static unsigned char seed[48];
     static unsigned char entropy_input[48];
     static unsigned char msg[3300];
+    // randombytes modifies the nonce
     static unsigned char pk[CRYPTO_PUBLICKEYBYTES], sk[CRYPTO_SECRETKEYBYTES];
+    static unsigned char nonce[40]; // NONCELEN=40
+    static inner_shake256_context sc;
+    static uint16_t hm[512];
 
     // Create the REQUEST file
 #ifdef ALGNAME
-    fn_req = "PQCsignKAT_" STR(ALGNAME) ".req";
+    fn_req = "PQChashtopointKAT_" STR(ALGNAME) ".req";
 #else
-    sprintf(fn_req, "PQCsignKAT_%d.req", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_req, "PQChashtopointKAT_%d.req", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_req = fopen(fn_req, "w")) == NULL)
     {
@@ -63,9 +67,9 @@ int main()
         return KAT_FILE_OPEN_ERROR;
     }
 #ifdef ALGNAME
-    fn_rsp = "PQCsignKAT_" STR(ALGNAME) ".rsp";
+    fn_rsp = "PQChashtopointKAT_" STR(ALGNAME) ".rsp";
 #else
-    sprintf(fn_rsp, "PQCsignKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_rsp, "PQChashtopointKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_rsp = fopen(fn_rsp, "w")) == NULL)
     {
@@ -86,10 +90,8 @@ int main()
         fprintf(fp_req, "mlen = %llu\n", mlen);
         randombytes(msg, mlen);
         fprintBstr(fp_req, "msg = ", msg, mlen);
-        fprintf(fp_req, "pk =\n");
-        fprintf(fp_req, "sk =\n");
-        fprintf(fp_req, "smlen =\n");
-        fprintf(fp_req, "sm =\n\n");
+        fprintf(fp_req, "salt = \n");
+        fprintf(fp_req, "hash =\n\n");
     }
     fclose(fp_req);
 
@@ -142,8 +144,6 @@ int main()
         fprintf(fp_rsp, "mlen = %llu\n", mlen);
 
         m = (unsigned char *)calloc(mlen, sizeof(unsigned char));
-        m1 = (unsigned char *)calloc(mlen, sizeof(unsigned char));
-        sm = (unsigned char *)calloc(mlen + CRYPTO_BYTES, sizeof(unsigned char));
 
         if (!ReadHex(fp_req, m, (int)mlen, "msg = "))
         {
@@ -152,45 +152,41 @@ int main()
         }
         fprintBstr(fp_rsp, "msg = ", m, mlen);
 
-        // Generate the public/private keypair
+        // Generate the public/private keypair so that randombytes has the same behavior as in the tests of signature
         if ((ret_val = crypto_sign_keypair(pk, sk)) != 0)
         {
             printf("crypto_sign_keypair returned <%d>\n", ret_val);
             return KAT_CRYPTO_FAILURE;
         }
-        fprintBstr(fp_rsp, "pk = ", pk, CRYPTO_PUBLICKEYBYTES);
-        fprintBstr(fp_rsp, "sk = ", sk, CRYPTO_SECRETKEYBYTES);
 
-        if ((ret_val = crypto_sign(sm, &smlen, m, mlen, sk)) != 0)
+        // Compute the hashtopoint
+        /*
+         * Create a random nonce (40 bytes).
+         */
+        randombytes(nonce, sizeof nonce);
+
+        /*
+         * Hash message nonce + message into a vector.
+         */
+        inner_shake256_init(&sc);
+        inner_shake256_inject(&sc, nonce, sizeof nonce);
+        inner_shake256_inject(&sc, m, mlen);
+        inner_shake256_flip(&sc);
+        Zf(hash_to_point_vartime)(&sc, hm, 9);
+
+        fprintf(fp_rsp, "salt = ");
+        for (size_t i = 0; i < sizeof nonce; i++)
         {
-            printf("crypto_sign returned <%d>\n", ret_val);
-            return KAT_CRYPTO_FAILURE;
+            fprintf(fp_rsp, "%02X", nonce[i]);
         }
-        fprintf(fp_rsp, "smlen = %llu\n", smlen);
-        fprintBstr(fp_rsp, "sm = ", sm, smlen);
         fprintf(fp_rsp, "\n");
-
-        if ((ret_val = crypto_sign_open(m1, &mlen1, sm, smlen, pk)) != 0)
+        fprintf(fp_rsp, "hash = [");
+        for (int i = 0; i < 512; i++)
         {
-            printf("crypto_sign_open returned <%d>\n", ret_val);
-            return KAT_CRYPTO_FAILURE;
+            fprintf(fp_rsp, "%u, ", hm[i]);
         }
-
-        if (mlen != mlen1)
-        {
-            printf("crypto_sign_open returned bad 'mlen': Got <%llu>, expected <%llu>\n", mlen1, mlen);
-            return KAT_CRYPTO_FAILURE;
-        }
-
-        if (memcmp(m, m1, mlen))
-        {
-            printf("crypto_sign_open returned bad 'm' value\n");
-            return KAT_CRYPTO_FAILURE;
-        }
-
+        fprintf(fp_rsp, "]\n\n");
         free(m);
-        free(m1);
-        free(sm);
 
     } while (!done);
 

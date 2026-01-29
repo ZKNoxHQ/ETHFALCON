@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include "katrng.h"
 #include "api.h"
+#include "inner.h"
 
 #define MAX_MARKER_LEN 50
 
@@ -50,12 +51,15 @@ int main()
     static unsigned char entropy_input[48];
     static unsigned char msg[3300];
     static unsigned char pk[CRYPTO_PUBLICKEYBYTES], sk[CRYPTO_SECRETKEYBYTES];
+    static unsigned char nonce[40]; // NONCELEN=40
+    static inner_shake256_context sc;
+    static uint16_t hm[512];
 
     // Create the REQUEST file
 #ifdef ALGNAME
-    fn_req = "PQCsignKAT_" STR(ALGNAME) ".req";
+    fn_req = "PQCfalconcoreKAT_" STR(ALGNAME) ".req";
 #else
-    sprintf(fn_req, "PQCsignKAT_%d.req", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_req, "PQCfalconcoreKAT_%d.req", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_req = fopen(fn_req, "w")) == NULL)
     {
@@ -63,9 +67,9 @@ int main()
         return KAT_FILE_OPEN_ERROR;
     }
 #ifdef ALGNAME
-    fn_rsp = "PQCsignKAT_" STR(ALGNAME) ".rsp";
+    fn_rsp = "PQCfalconcoreKAT_" STR(ALGNAME) ".rsp";
 #else
-    sprintf(fn_rsp, "PQCsignKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_rsp, "PQCfalconcoreKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_rsp = fopen(fn_rsp, "w")) == NULL)
     {
@@ -79,13 +83,16 @@ int main()
     randombytes_init(entropy_input, NULL, 256);
     for (int i = 0; i < 100; i++)
     {
-        fprintf(fp_req, "count = %d\n", i);
+
         randombytes(seed, 48);
-        fprintBstr(fp_req, "seed = ", seed, 48);
         mlen = 33 * (i + 1);
-        fprintf(fp_req, "mlen = %llu\n", mlen);
         randombytes(msg, mlen);
+
+        fprintf(fp_req, "count = %d\n", i);
+        fprintBstr(fp_req, "seed = ", seed, 48);
+        fprintf(fp_req, "mlen = %llu\n", mlen);
         fprintBstr(fp_req, "msg = ", msg, mlen);
+        fprintf(fp_req, "hashtopoint=[]\n");
         fprintf(fp_req, "pk =\n");
         fprintf(fp_req, "sk =\n");
         fprintf(fp_req, "smlen =\n");
@@ -158,6 +165,29 @@ int main()
             printf("crypto_sign_keypair returned <%d>\n", ret_val);
             return KAT_CRYPTO_FAILURE;
         }
+
+        // generate HashToPoint
+        randombytes(nonce, sizeof nonce);
+
+        inner_shake256_init(&sc);
+        inner_shake256_inject(&sc, nonce, sizeof nonce);
+        inner_shake256_inject(&sc, m, mlen);
+        inner_shake256_flip(&sc);
+        Zf(hash_to_point_vartime)(&sc, hm, 9);
+        fprintf(fp_rsp, "hashtopoint=[");
+        for (int i = 0; i < 512; i++)
+            fprintf(fp_rsp, "%u, ", hm[i]);
+        fprintf(fp_rsp, "]\n");
+
+        // reinitialization of randombytes to reproduce the sam vectors...
+        randombytes_init(seed, NULL, 256);
+        // Generate the public/private keypair
+        if ((ret_val = crypto_sign_keypair(pk, sk)) != 0)
+        {
+            printf("crypto_sign_keypair returned <%d>\n", ret_val);
+            return KAT_CRYPTO_FAILURE;
+        }
+
         fprintBstr(fp_rsp, "pk = ", pk, CRYPTO_PUBLICKEYBYTES);
         fprintBstr(fp_rsp, "sk = ", sk, CRYPTO_SECRETKEYBYTES);
 
@@ -188,7 +218,6 @@ int main()
             return KAT_CRYPTO_FAILURE;
         }
 
-        free(m);
         free(m1);
         free(sm);
 
