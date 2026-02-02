@@ -23,7 +23,7 @@ OBJ5 = build/PQCgenKAT_hashtopoint.o build/katrng.o
 OBJ6 = build/PQCgenKAT_falconcore.o build/katrng.o
 
 HEAD1 = src/api.h src/fpr.h src/inner.h
-HEAD2 = src/api.h KAT/katrng.h
+HEAD2 = src/api.h src/katrng.h
 
 all: build build/kat512int build/kat512int_hashtopoint build/kat512int_falconcore build/kat512int_zknox build/kat512int_epervier_zknox
 
@@ -101,5 +101,5 @@ build/PQCgenKAT_hashtopoint.o: KAT/PQCgenKAT_hashtopoint.c $(HEAD2)
 build/PQCgenKAT_falconcore.o: KAT/PQCgenKAT_falconcore.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_falconcore.o KAT/PQCgenKAT_falconcore.c
 
-build/katrng.o: KAT/katrng.c $(HEAD2)
-	$(CC) $(CFLAGS) -I src/ -c -o build/katrng.o KAT/katrng.c
+build/katrng.o: src/katrng.c $(HEAD2)
+	$(CC) $(CFLAGS) -I src/ -c -o build/katrng.o src/katrng.c
