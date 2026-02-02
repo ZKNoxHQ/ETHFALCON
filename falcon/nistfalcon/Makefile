@@ -17,12 +17,15 @@ LIBS =
 
 OBJ1 =     build/codec.o build/common.o build/fft.o build/fpr.o build/keygen.o build/nist.o build/nist16.o build/epervier16.o build/rng.o build/shake.o build/sign.o build/vrfy.o build/keccak_prng.o build/keccak256.o
 OBJ1_ETH = build/codec.o build/common.o build/fft.o build/fpr.o build/keygen.o \
-           build/nist_eth.o build/nist16.o build/epervier16.o build/rng.o \
+           build/nist_eth.o build/nist16_eth.o build/epervier16.o build/rng.o \
            build/shake.o build/sign_eth.o build/vrfy.o \
            build/keccak_prng.o build/keccak256.o
 
 OBJ2 = build/PQCgenKAT_sign.o build/katrng.o
+
 OBJ3 = build/PQCgenKAT_sign_zknox.o build/katrng.o
+OBJ3_ETH = build/PQCgenKAT_sign_zknox_eth.o build/katrng.o
+
 OBJ4 = build/PQCgenKAT_sign_epervier_zknox.o build/katrng.o
 OBJ5 = build/PQCgenKAT_hashtopoint.o build/katrng.o
 OBJ6 = build/PQCgenKAT_falconcore.o build/katrng.o
@@ -31,13 +34,15 @@ OBJ7 = build/PQCgenKAT_sign_eth.o build/katrng.o
 HEAD1 = src/api.h src/fpr.h src/inner.h src/keccak_prng.h src/keccak256.h
 HEAD2 = src/api.h src/katrng.h
 
-all: build build/kat512int build/kat512int_hashtopoint build/kat512int_falconcore build/kat512int_zknox build/kat512int_epervier_zknox build/kat512int_eth
+all: build build/kat512int build/kat512int_hashtopoint build/kat512int_falconcore \
+     build/kat512int_zknox build/kat512int_epervier_zknox \
+     build/kat512int_eth build/kat512int_zknox_eth
 
 build:
 	-mkdir build
 
 clean:
-	-rm -f build/kat512int build/kat512int_zknox build/kat512int_epervier_zknox build/kat512int_hashtopoint build/kat512int_falconcore build/kat512int_eth build/sign_eth.o build/nist_eth.o $(OBJ1) $(OBJ2) $(OBJ3) $(OBJ4) $(OBJ5) $(OBJ6) $(OBJ7)
+	-rm -f build/kat512int build/kat512int_zknox build/kat512int_epervier_zknox build/kat512int_hashtopoint build/kat512int_falconcore build/kat512int_eth build/sign_eth.o build/nist_eth.o build/nist16_eth.o $(OBJ1) $(OBJ1_ETH) $(OBJ2) $(OBJ3) $(OBJ3_ETH) $(OBJ4) $(OBJ5) $(OBJ6) $(OBJ7)
 	find . -name '*.rsp' -delete
 	find . -name '*.req' -delete
 
@@ -46,6 +51,9 @@ build/kat512int: $(OBJ1) $(OBJ2)
 
 build/kat512int_zknox: $(OBJ1) $(OBJ3)
 	$(LD) $(LDFLAGS) -o build/kat512int_zknox $(OBJ1) $(OBJ3) $(LIBS)
+
+build/kat512int_zknox_eth: $(OBJ1_ETH) $(OBJ3_ETH)
+	$(LD) $(LDFLAGS) -o build/kat512int_zknox_eth $(OBJ1_ETH) $(OBJ3_ETH) $(LIBS)
 
 build/kat512int_epervier_zknox: $(OBJ1) $(OBJ4)
 	$(LD) $(LDFLAGS) -o build/kat512int_epervier_zknox $(OBJ1) $(OBJ4) $(LIBS)
@@ -76,6 +84,9 @@ build/keygen.o: src/keygen.c $(HEAD1)
 
 build/nist.o: src/nist.c $(HEAD1)
 	$(CC) $(CFLAGS) -c -o build/nist.o src/nist.c
+
+build/nist16_eth.o: src/nist16.c $(HEAD1)
+	$(CC) $(CFLAGS) -DETHFALCON -c -o build/nist16_eth.o src/nist16.c
 
 build/nist16.o: src/nist16.c $(HEAD1)
 	$(CC) $(CFLAGS) -c -o build/nist16.o src/nist16.c
@@ -112,7 +123,10 @@ build/PQCgenKAT_sign.o: KAT/PQCgenKAT_sign.c $(HEAD2)
 
 build/PQCgenKAT_sign_zknox.o: KAT/PQCgenKAT_sign_zknox.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_sign_zknox.o KAT/PQCgenKAT_sign_zknox.c
-	
+
+build/PQCgenKAT_sign_zknox_eth.o: KAT/PQCgenKAT_sign_zknox.c $(HEAD2)
+	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -DETHFALCON -c -o build/PQCgenKAT_sign_zknox_eth.o KAT/PQCgenKAT_sign_zknox.c
+
 build/PQCgenKAT_sign_epervier_zknox.o: KAT/PQCgenKAT_sign_epervier_zknox.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_sign_epervier_zknox.o KAT/PQCgenKAT_sign_epervier_zknox.c
 	

@@ -4,13 +4,13 @@
  */
 
 #include <stddef.h>
-#include <string.h>	
+#include <string.h>
 
 #include "api.h"
 #include "inner.h"
 
-#include<stdio.h>
-#define NONCELEN   40
+#include <stdio.h>
+#define NONCELEN 40
 
 /*
  * If stack usage is an issue, define TEMPALLOC to static in order to
@@ -22,14 +22,14 @@
 #define TEMPALLOC
 
 void randombytes_init(unsigned char *entropy_input,
-	unsigned char *personalization_string,
-	int security_strength);
+					  unsigned char *personalization_string,
+					  int security_strength);
 int randombytes(unsigned char *x, unsigned long long xlen);
 
-int
-zknox_crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
+int zknox_crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
 {
-	TEMPALLOC union {
+	TEMPALLOC union
+	{
 		uint8_t b[FALCON_KEYGEN_TEMP_9];
 		uint64_t dummy_u64;
 		fpr dummy_fpr;
@@ -55,24 +55,28 @@ zknox_crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
 	sk[0] = 0x50 + 9;
 	u = 1;
 	v = Zf(trim_i8_encode)(sk + u, CRYPTO_SECRETKEYBYTES - u,
-		f, 9, Zf(max_fg_bits)[9]);
-	if (v == 0) {
+						   f, 9, Zf(max_fg_bits)[9]);
+	if (v == 0)
+	{
 		return -1;
 	}
 	u += v;
 	v = Zf(trim_i8_encode)(sk + u, CRYPTO_SECRETKEYBYTES - u,
-		g, 9, Zf(max_fg_bits)[9]);
-	if (v == 0) {
+						   g, 9, Zf(max_fg_bits)[9]);
+	if (v == 0)
+	{
 		return -1;
 	}
 	u += v;
 	v = Zf(trim_i8_encode)(sk + u, CRYPTO_SECRETKEYBYTES - u,
-		F, 9, Zf(max_FG_bits)[9]);
-	if (v == 0) {
+						   F, 9, Zf(max_FG_bits)[9]);
+	if (v == 0)
+	{
 		return -1;
 	}
 	u += v;
-	if (u != CRYPTO_SECRETKEYBYTES) {
+	if (u != CRYPTO_SECRETKEYBYTES)
+	{
 		return -1;
 	}
 
@@ -81,63 +85,74 @@ zknox_crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
 	 */
 	pk[0] = 0x00 + 9;
 	v = Zf(modq_encode16)(pk + 1, ZKNOX_CRYPTO_PUBLICKEYBYTES - 1, h, 9);
-	
-	if (v != ZKNOX_CRYPTO_PUBLICKEYBYTES - 1) {
+
+	if (v != ZKNOX_CRYPTO_PUBLICKEYBYTES - 1)
+	{
 		return -1;
 	}
 
 	return 0;
 }
 
-int
-zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
-	const unsigned char *m, unsigned long long mlen,
-	const unsigned char *sk)
+int zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
+					  const unsigned char *m, unsigned long long mlen,
+					  const unsigned char *sk)
 {
-	TEMPALLOC union {
+	TEMPALLOC union
+	{
 		uint8_t b[72 * 512];
 		uint64_t dummy_u64;
 		fpr dummy_fpr;
 	} tmp;
 	TEMPALLOC int8_t f[512], g[512], F[512], G[512];
-	TEMPALLOC union {
+	TEMPALLOC union
+	{
 		int16_t sig[512];
 		uint16_t hm[512];
 	} r;
 	TEMPALLOC unsigned char seed[48], nonce[NONCELEN];
 	TEMPALLOC unsigned char esig[ZKNOX_CRYPTO_BYTES - 2 - sizeof nonce];
+#if ETHFALCON
+	TEMPALLOC inner_keccak256_prng_ctx kc;
+#endif
 	TEMPALLOC inner_shake256_context sc;
 	size_t u, v, sig_len;
 
 	/*
 	 * Decode the private key.
 	 */
-	if (sk[0] != 0x50 + 9) {
+	if (sk[0] != 0x50 + 9)
+	{
 		return -1;
 	}
 	u = 1;
 	v = Zf(trim_i8_decode)(f, 9, Zf(max_fg_bits)[9],
-		sk + u, CRYPTO_SECRETKEYBYTES - u);
-	if (v == 0) {
+						   sk + u, CRYPTO_SECRETKEYBYTES - u);
+	if (v == 0)
+	{
 		return -1;
 	}
 	u += v;
 	v = Zf(trim_i8_decode)(g, 9, Zf(max_fg_bits)[9],
-		sk + u, CRYPTO_SECRETKEYBYTES - u);
-	if (v == 0) {
+						   sk + u, CRYPTO_SECRETKEYBYTES - u);
+	if (v == 0)
+	{
 		return -1;
 	}
 	u += v;
 	v = Zf(trim_i8_decode)(F, 9, Zf(max_FG_bits)[9],
-		sk + u, CRYPTO_SECRETKEYBYTES - u);
-	if (v == 0) {
+						   sk + u, CRYPTO_SECRETKEYBYTES - u);
+	if (v == 0)
+	{
 		return -1;
 	}
 	u += v;
-	if (u != CRYPTO_SECRETKEYBYTES) {
+	if (u != CRYPTO_SECRETKEYBYTES)
+	{
 		return -1;
 	}
-	if (!Zf(complete_private)(G, f, g, F, 9, tmp.b)) {
+	if (!Zf(complete_private)(G, f, g, F, 9, tmp.b))
+	{
 		return -1;
 	}
 
@@ -149,11 +164,19 @@ zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	/*
 	 * Hash message nonce + message into a vector.
 	 */
+#if ETHFALCON
+	inner_keccak256_init(&kc);
+	inner_keccak256_inject(&kc, nonce, sizeof nonce);
+	inner_keccak256_inject(&kc, m, mlen);
+	inner_keccak256_flip(&kc);
+	Zf(keccak_hash_to_point_vartime)(&kc, r.hm, 9);
+#else
 	inner_shake256_init(&sc);
 	inner_shake256_inject(&sc, nonce, sizeof nonce);
 	inner_shake256_inject(&sc, m, mlen);
 	inner_shake256_flip(&sc);
 	Zf(hash_to_point_vartime)(&sc, r.hm, 9);
+#endif
 
 	/*
 	 * Initialize a RNG.
@@ -163,12 +186,10 @@ zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	inner_shake256_inject(&sc, seed, sizeof seed);
 	inner_shake256_flip(&sc);
 
-
 	/*
 	 * Compute the signature.
 	 */
 	Zf(sign_dyn)(r.sig, &sc, f, g, F, G, r.hm, 9, tmp.b);
-
 
 	/*
 	 * Encode the signature and bundle it with the message. Format is:
@@ -179,10 +200,11 @@ zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	 */
 	esig[0] = 0x20 + 9;
 	sig_len = Zf(comp_encode16)(esig + 1, ZKNOX_CRYPTO_BYTES - 1, r.sig, 9);
-	if (sig_len == 0) {
+	if (sig_len == 0)
+	{
 		return -1;
 	}
-	sig_len ++;
+	sig_len++;
 	memmove(sm + 2 + sizeof nonce, m, mlen);
 	sm[0] = (unsigned char)(sig_len >> 8);
 	sm[1] = (unsigned char)sig_len;
@@ -192,12 +214,12 @@ zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	return 0;
 }
 
-int
-zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
-	const unsigned char *sm, unsigned long long smlen,
-	const unsigned char *pk)
+int zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
+						   const unsigned char *sm, unsigned long long smlen,
+						   const unsigned char *pk)
 {
-	TEMPALLOC union {
+	TEMPALLOC union
+	{
 		uint8_t b[2 * 512];
 		uint64_t dummy_u64;
 		fpr dummy_fpr;
@@ -205,17 +227,21 @@ zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
 	const unsigned char *esig;
 	TEMPALLOC uint16_t h[512], hm[512];
 	TEMPALLOC int16_t sig[512];
+#if ETHFALCON
+	TEMPALLOC inner_keccak256_prng_ctx kc;
+#else
 	TEMPALLOC inner_shake256_context sc;
+#endif
 	size_t sig_len, msg_len;
 
 	/*
 	 * Decode public key.
 	 */
-	if (pk[0] != 0x00 + 9) {
+	if (pk[0] != 0x00 + 9)
+	{
 		return -1;
 	}
-	if (Zf(modq_decode16)(h, 9, pk + 1, ZKNOX_CRYPTO_PUBLICKEYBYTES - 1)
-		!= ZKNOX_CRYPTO_PUBLICKEYBYTES - 1)
+	if (Zf(modq_decode16)(h, 9, pk + 1, ZKNOX_CRYPTO_PUBLICKEYBYTES - 1) != ZKNOX_CRYPTO_PUBLICKEYBYTES - 1)
 	{
 		return -1;
 	}
@@ -224,11 +250,13 @@ zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
 	/*
 	 * Find nonce, signature, message length.
 	 */
-	if (smlen < 2 + NONCELEN) {
+	if (smlen < 2 + NONCELEN)
+	{
 		return -1;
 	}
 	sig_len = ((size_t)sm[0] << 8) | (size_t)sm[1];
-	if (sig_len > (smlen - 2 - NONCELEN)) {
+	if (sig_len > (smlen - 2 - NONCELEN))
+	{
 		return -1;
 	}
 	msg_len = smlen - 2 - NONCELEN - sig_len;
@@ -236,27 +264,36 @@ zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
 	/*
 	 * Decode signature.
 	 */
-	 esig = sm + 2 + NONCELEN + msg_len;
-	if (sig_len < 1 || esig[0] != 0x20 + 9) {
+	esig = sm + 2 + NONCELEN + msg_len;
+	if (sig_len < 1 || esig[0] != 0x20 + 9)
+	{
 		return -1;
 	}
 	if (Zf(comp_decode16)(sig, 9,
-		esig + 1, sig_len - 1) != sig_len - 1)
+						  esig + 1, sig_len - 1) != sig_len - 1)
 	{
 		return -1;
 	}
 	/*
 	 * Hash nonce +	 message into a vector.
 	 */
+#if ETHFALCON
+	inner_keccak256_init(&kc);
+	inner_keccak256_inject(&kc, sm + 2, NONCELEN + msg_len);
+	inner_keccak256_flip(&kc);
+	Zf(keccak_hash_to_point_vartime)(&kc, hm, 9);
+#else
 	inner_shake256_init(&sc);
 	inner_shake256_inject(&sc, sm + 2, NONCELEN + msg_len);
 	inner_shake256_flip(&sc);
 	Zf(hash_to_point_vartime)(&sc, hm, 9);
+#endif
 
 	/*
 	 * Verify signature.
 	 */
-	if (!Zf(verify_raw)(hm, sig, h, 9, tmp.b)) {
+	if (!Zf(verify_raw)(hm, sig, h, 9, tmp.b))
+	{
 		return -1;
 	}
 	/*

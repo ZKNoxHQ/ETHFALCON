@@ -180,13 +180,9 @@ int crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	 * Initialize a RNG.
 	 */
 	randombytes(seed, sizeof seed);
-#if ETHFALCON
-
-#else
 	inner_shake256_init(&sc);
 	inner_shake256_inject(&sc, seed, sizeof seed);
 	inner_shake256_flip(&sc);
-#endif
 
 	/*
 	 * Compute the signature.
