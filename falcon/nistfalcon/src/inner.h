@@ -73,24 +73,21 @@
  *    function does nothing, so it can be called systematically.
  */
 
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-
+#include "keccak_prng.h"
 
 /*
  * "Naming" macro used to apply a consistent prefix over all global
  * symbols.
  */
 #ifndef FALCON_PREFIX
-#define FALCON_PREFIX   falcon_inner
+#define FALCON_PREFIX falcon_inner
 #endif
-#define Zf(name)             Zf_(FALCON_PREFIX, name)
-#define Zf_(prefix, name)    Zf__(prefix, name)
-#define Zf__(prefix, name)   prefix ## _ ## name  
-
+#define Zf(name) Zf_(FALCON_PREFIX, name)
+#define Zf_(prefix, name) Zf__(prefix, name)
+#define Zf__(prefix, name) prefix##_##name
 
 /*
  * Some computations with floating-point elements, in particular
@@ -114,18 +111,30 @@ set_fpu_cw(unsigned x)
 	return x;
 }
 
-
-
 /*
  * MSVC 2015 does not know the C99 keyword 'restrict'.
  */
 #if defined _MSC_VER && _MSC_VER
 #ifndef restrict
-#define restrict   __restrict
+#define restrict __restrict
 #endif
 #endif
 
 /* ==================================================================== */
+/*
+ * KECCAK256 PRNG implementation (keccak_prng.c).
+ */
+
+#define inner_keccak256_init Zf(i_keccak256_init)
+#define inner_keccak256_inject Zf(i_keccak256_inject)
+#define inner_keccak256_flip Zf(i_keccak256_flip)
+#define inner_keccak256_extract Zf(i_keccak256_extract)
+
+int Zf(i_keccak256_init)(inner_keccak256_prng_ctx *ctx);
+int Zf(i_keccak256_inject)(inner_keccak256_prng_ctx *ctx, const uint8_t *data, size_t len);
+int Zf(i_keccak256_flip)(inner_keccak256_prng_ctx *ctx);
+int Zf(i_keccak256_extract)(inner_keccak256_prng_ctx *ctx, uint8_t *out, size_t outlen);
+
 /*
  * SHAKE256 implementation (shake.c).
  *
@@ -133,18 +142,20 @@ set_fpu_cw(unsigned x)
  * as part of PQClean.
  */
 
-typedef struct {
-	union {
+typedef struct
+{
+	union
+	{
 		uint64_t A[25];
 		uint8_t dbuf[200];
 	} st;
 	uint64_t dptr;
 } inner_shake256_context;
 
-#define inner_shake256_init      Zf(i_shake256_init)
-#define inner_shake256_inject    Zf(i_shake256_inject)
-#define inner_shake256_flip      Zf(i_shake256_flip)
-#define inner_shake256_extract   Zf(i_shake256_extract)
+#define inner_shake256_init Zf(i_shake256_init)
+#define inner_shake256_inject Zf(i_shake256_inject)
+#define inner_shake256_flip Zf(i_shake256_flip)
+#define inner_shake256_extract Zf(i_shake256_extract)
 
 void Zf(i_shake256_init)(
 	inner_shake256_context *sc);
@@ -198,32 +209,32 @@ void Zf(i_shake256_extract)(
  *
  */
 
- size_t Zf(modq_encode)(void *out, size_t max_out_len,
-	const uint16_t *x, unsigned logn);
- size_t Zf(modq_encode16)(void *out, size_t max_out_len,
-	const uint16_t *x, unsigned logn);
-	size_t Zf(trim_i16_encode)(void *out, size_t max_out_len,
-	const int16_t *x, unsigned logn, unsigned bits);
+size_t Zf(modq_encode)(void *out, size_t max_out_len,
+					   const uint16_t *x, unsigned logn);
+size_t Zf(modq_encode16)(void *out, size_t max_out_len,
+						 const uint16_t *x, unsigned logn);
+size_t Zf(trim_i16_encode)(void *out, size_t max_out_len,
+						   const int16_t *x, unsigned logn, unsigned bits);
 size_t Zf(trim_i8_encode)(void *out, size_t max_out_len,
-	const int8_t *x, unsigned logn, unsigned bits);
+						  const int8_t *x, unsigned logn, unsigned bits);
 size_t Zf(comp_encode)(void *out, size_t max_out_len,
-	const int16_t *x, unsigned logn);
+					   const int16_t *x, unsigned logn);
 size_t Zf(comp_encode16)(void *out, size_t max_out_len,
-	const int16_t *x, unsigned logn);
-			
+						 const int16_t *x, unsigned logn);
+
 size_t Zf(modq_decode)(uint16_t *x, unsigned logn,
-	const void *in, size_t max_in_len);
+					   const void *in, size_t max_in_len);
 size_t Zf(modq_decode16)(uint16_t *x, unsigned logn,
-	const void *in, size_t max_in_len);
+						 const void *in, size_t max_in_len);
 size_t Zf(trim_i16_decode)(int16_t *x, unsigned logn, unsigned bits,
-	const void *in, size_t max_in_len);
+						   const void *in, size_t max_in_len);
 size_t Zf(trim_i8_decode)(int8_t *x, unsigned logn, unsigned bits,
-	const void *in, size_t max_in_len);
+						  const void *in, size_t max_in_len);
 size_t Zf(comp_decode)(int16_t *x, unsigned logn,
-	const void *in, size_t max_in_len);
+					   const void *in, size_t max_in_len);
 size_t Zf(comp_decode16)(int16_t *x, unsigned logn,
-	const void *in, size_t max_in_len);
-			
+						 const void *in, size_t max_in_len);
+
 /*
  * Number of bits for key elements, indexed by logn (1 to 10). This
  * is at most 8 bits for all degrees, but some degrees may have shorter
@@ -245,13 +256,22 @@ extern const uint8_t Zf(max_sig_bits)[];
  */
 
 /*
+ * From a KECCAKPRNG context (must be already flipped), produce a new
+ * point. This is the non-constant-time version, which may leak enough
+ * information to serve as a stop condition on a brute force attack on
+ * the hashed message (provided that the nonce value is known).
+ */
+void Zf(keccak_hash_to_point_vartime)(inner_keccak256_prng_ctx *kc,
+									  uint16_t *x, unsigned logn);
+
+/*
  * From a SHAKE256 context (must be already flipped), produce a new
  * point. This is the non-constant-time version, which may leak enough
  * information to serve as a stop condition on a brute force attack on
  * the hashed message (provided that the nonce value is known).
  */
 void Zf(hash_to_point_vartime)(inner_shake256_context *sc,
-	uint16_t *x, unsigned logn);
+							   uint16_t *x, unsigned logn);
 
 /*
  * From a SHAKE256 context (must be already flipped), produce a new
@@ -262,7 +282,7 @@ void Zf(hash_to_point_vartime)(inner_shake256_context *sc,
  * tmp[] must have 16-bit alignment.
  */
 void Zf(hash_to_point_ct)(inner_shake256_context *sc,
-	uint16_t *x, unsigned logn, uint8_t *tmp);
+						  uint16_t *x, unsigned logn, uint8_t *tmp);
 
 /*
  * Tell whether a given vector (2N coordinates, in two halves) is
@@ -314,7 +334,7 @@ uint16_t Zf(hint_epervier)(int16_t *s2, unsigned logn);
  * tmp[] must have 16-bit alignment.
  */
 int Zf(verify_raw)(const uint16_t *c0, const int16_t *s2,
-	const uint16_t *h, unsigned logn, uint8_t *tmp);
+				   const uint16_t *h, unsigned logn, uint8_t *tmp);
 
 /*
  * Compute the public key h[], given the private key elements f[] and
@@ -326,7 +346,7 @@ int Zf(verify_raw)(const uint16_t *c0, const int16_t *s2,
  * tmp[] must have 16-bit alignment.
  */
 int Zf(compute_public)(uint16_t *h,
-	const int8_t *f, const int8_t *g, unsigned logn, uint8_t *tmp);
+					   const int8_t *f, const int8_t *g, unsigned logn, uint8_t *tmp);
 
 /*
  * Recompute the fourth private key element. Private key consists in
@@ -340,8 +360,8 @@ int Zf(compute_public)(uint16_t *h,
  * tmp[] must have 16-bit alignment.
  */
 int Zf(complete_private)(int8_t *G,
-	const int8_t *f, const int8_t *g, const int8_t *F,
-	unsigned logn, uint8_t *tmp);
+						 const int8_t *f, const int8_t *g, const int8_t *F,
+						 unsigned logn, uint8_t *tmp);
 
 /*
  * Test whether a given polynomial is invertible modulo phi and q.
@@ -380,18 +400,17 @@ int Zf(count_nttzero)(const int16_t *sig, unsigned logn, uint8_t *tmp);
  *
  * tmp[] must have 16-bit alignment.
  */
- int Zf(verify_recover)(uint16_t *h,
-	const uint16_t *c0, const int16_t *s1, const int16_t *s2,
-	unsigned logn, uint8_t *tmp);
+int Zf(verify_recover)(uint16_t *h,
+					   const uint16_t *c0, const int16_t *s1, const int16_t *s2,
+					   unsigned logn, uint8_t *tmp);
 
 /*
  * Like verify_recover but without the final intt
-*/
+ */
 int Zf(verify_recover_epervier)(uint16_t *h,
-	const uint16_t *c0, const int16_t *s1, const int16_t *s2,
-	unsigned logn, uint8_t *tmp);
-	
-	
+								const uint16_t *c0, const int16_t *s1, const int16_t *s2,
+								unsigned logn, uint8_t *tmp);
+
 /* ==================================================================== */
 /*
  * Implementation of floating-point real numbers (fpr.h, fpr.c).
@@ -519,13 +538,16 @@ int Zf(get_seed)(void *seed, size_t seed_len);
  * The unions with 'dummy_u64' are there to ensure proper alignment for
  * 64-bit direct access.
  */
-typedef struct {
-	union {
+typedef struct
+{
+	union
+	{
 		uint8_t d[512]; /* MUST be 512, exactly */
 		uint64_t dummy_u64;
 	} buf;
 	size_t ptr;
-	union {
+	union
+	{
 		uint8_t d[256];
 		uint64_t dummy_u64;
 	} state;
@@ -564,7 +586,8 @@ prng_get_u64(prng *p)
 	 * an empty buffer.
 	 */
 	u = p->ptr;
-	if (u >= (sizeof p->buf.d) - 9) {
+	if (u >= (sizeof p->buf.d) - 9)
+	{
 		Zf(prng_refill)(p);
 		u = 0;
 	}
@@ -574,14 +597,7 @@ prng_get_u64(prng *p)
 	 * On systems that use little-endian encoding and allow
 	 * unaligned accesses, we can simply read the data where it is.
 	 */
-	return (uint64_t)p->buf.d[u + 0]
-		| ((uint64_t)p->buf.d[u + 1] << 8)
-		| ((uint64_t)p->buf.d[u + 2] << 16)
-		| ((uint64_t)p->buf.d[u + 3] << 24)
-		| ((uint64_t)p->buf.d[u + 4] << 32)
-		| ((uint64_t)p->buf.d[u + 5] << 40)
-		| ((uint64_t)p->buf.d[u + 6] << 48)
-		| ((uint64_t)p->buf.d[u + 7] << 56);
+	return (uint64_t)p->buf.d[u + 0] | ((uint64_t)p->buf.d[u + 1] << 8) | ((uint64_t)p->buf.d[u + 2] << 16) | ((uint64_t)p->buf.d[u + 3] << 24) | ((uint64_t)p->buf.d[u + 4] << 32) | ((uint64_t)p->buf.d[u + 5] << 40) | ((uint64_t)p->buf.d[u + 6] << 48) | ((uint64_t)p->buf.d[u + 7] << 56);
 }
 
 /*
@@ -592,8 +608,9 @@ prng_get_u8(prng *p)
 {
 	unsigned v;
 
-	v = p->buf.d[p->ptr ++];
-	if (p->ptr == sizeof p->buf.d) {
+	v = p->buf.d[p->ptr++];
+	if (p->ptr == sizeof p->buf.d)
+	{
 		Zf(prng_refill)(p);
 	}
 	return v;
@@ -692,7 +709,7 @@ void Zf(poly_div_fft)(fpr *restrict a, const fpr *restrict b, unsigned logn);
  * Array d MUST NOT overlap with either a or b.
  */
 void Zf(poly_invnorm2_fft)(fpr *restrict d,
-	const fpr *restrict a, const fpr *restrict b, unsigned logn);
+						   const fpr *restrict a, const fpr *restrict b, unsigned logn);
 
 /*
  * Given F, G, f and g (in FFT representation), compute F*adj(f)+G*adj(g)
@@ -700,8 +717,8 @@ void Zf(poly_invnorm2_fft)(fpr *restrict d,
  * any of the source arrays.
  */
 void Zf(poly_add_muladj_fft)(fpr *restrict d,
-	const fpr *restrict F, const fpr *restrict G,
-	const fpr *restrict f, const fpr *restrict g, unsigned logn);
+							 const fpr *restrict F, const fpr *restrict G,
+							 const fpr *restrict f, const fpr *restrict g, unsigned logn);
 
 /*
  * Multiply polynomial a by polynomial b, where b is autoadjoint. Both
@@ -710,7 +727,7 @@ void Zf(poly_add_muladj_fft)(fpr *restrict d,
  * a and b MUST NOT overlap.
  */
 void Zf(poly_mul_autoadj_fft)(fpr *restrict a,
-	const fpr *restrict b, unsigned logn);
+							  const fpr *restrict b, unsigned logn);
 
 /*
  * Divide polynomial a by polynomial b, where b is autoadjoint. Both
@@ -719,7 +736,7 @@ void Zf(poly_mul_autoadj_fft)(fpr *restrict a,
  * a and b MUST NOT overlap.
  */
 void Zf(poly_div_autoadj_fft)(fpr *restrict a,
-	const fpr *restrict b, unsigned logn);
+							  const fpr *restrict b, unsigned logn);
 
 /*
  * Perform an LDL decomposition of an auto-adjoint matrix G, in FFT
@@ -730,7 +747,7 @@ void Zf(poly_div_autoadj_fft)(fpr *restrict a,
  * (In fact, d00 = g00, so the g00 operand is left unmodified.)
  */
 void Zf(poly_LDL_fft)(const fpr *restrict g00,
-	fpr *restrict g01, fpr *restrict g11, unsigned logn);
+					  fpr *restrict g01, fpr *restrict g11, unsigned logn);
 
 /*
  * Perform an LDL decomposition of an auto-adjoint matrix G, in FFT
@@ -739,8 +756,8 @@ void Zf(poly_LDL_fft)(const fpr *restrict g00,
  * in two other separate buffers provided as extra parameters.
  */
 void Zf(poly_LDLmv_fft)(fpr *restrict d11, fpr *restrict l10,
-	const fpr *restrict g00, const fpr *restrict g01,
-	const fpr *restrict g11, unsigned logn);
+						const fpr *restrict g00, const fpr *restrict g01,
+						const fpr *restrict g11, unsigned logn);
 
 /*
  * Apply "split" operation on a polynomial in FFT representation:
@@ -748,7 +765,7 @@ void Zf(poly_LDLmv_fft)(fpr *restrict d11, fpr *restrict l10,
  * (polynomials modulo X^(N/2)+1). f0, f1 and f MUST NOT overlap.
  */
 void Zf(poly_split_fft)(fpr *restrict f0, fpr *restrict f1,
-	const fpr *restrict f, unsigned logn);
+						const fpr *restrict f, unsigned logn);
 
 /*
  * Apply "merge" operation on two polynomials in FFT representation:
@@ -757,7 +774,7 @@ void Zf(poly_split_fft)(fpr *restrict f0, fpr *restrict f1,
  * f MUST NOT overlap with either f0 or f1.
  */
 void Zf(poly_merge_fft)(fpr *restrict f,
-	const fpr *restrict f0, const fpr *restrict f1, unsigned logn);
+						const fpr *restrict f0, const fpr *restrict f1, unsigned logn);
 
 /* ==================================================================== */
 /*
@@ -770,16 +787,16 @@ void Zf(poly_merge_fft)(fpr *restrict f,
  * This size is 28*2^logn bytes, except for degrees 2 and 4 (logn = 1
  * or 2) where it is slightly greater.
  */
-#define FALCON_KEYGEN_TEMP_1      136
-#define FALCON_KEYGEN_TEMP_2      272
-#define FALCON_KEYGEN_TEMP_3      224
-#define FALCON_KEYGEN_TEMP_4      448
-#define FALCON_KEYGEN_TEMP_5      896
-#define FALCON_KEYGEN_TEMP_6     1792
-#define FALCON_KEYGEN_TEMP_7     3584
-#define FALCON_KEYGEN_TEMP_8     7168
-#define FALCON_KEYGEN_TEMP_9    14336
-#define FALCON_KEYGEN_TEMP_10   28672
+#define FALCON_KEYGEN_TEMP_1 136
+#define FALCON_KEYGEN_TEMP_2 272
+#define FALCON_KEYGEN_TEMP_3 224
+#define FALCON_KEYGEN_TEMP_4 448
+#define FALCON_KEYGEN_TEMP_5 896
+#define FALCON_KEYGEN_TEMP_6 1792
+#define FALCON_KEYGEN_TEMP_7 3584
+#define FALCON_KEYGEN_TEMP_8 7168
+#define FALCON_KEYGEN_TEMP_9 14336
+#define FALCON_KEYGEN_TEMP_10 28672
 
 /*
  * Generate a new key pair. Randomness is extracted from the provided
@@ -796,8 +813,8 @@ void Zf(poly_merge_fft)(fpr *restrict f,
  * This function uses floating-point rounding (see set_fpu_cw()).
  */
 void Zf(keygen)(inner_shake256_context *rng,
-	int8_t *f, int8_t *g, int8_t *F, int8_t *G, uint16_t *h,
-	unsigned logn, uint8_t *tmp);
+				int8_t *f, int8_t *g, int8_t *F, int8_t *G, uint16_t *h,
+				unsigned logn, uint8_t *tmp);
 
 /* ==================================================================== */
 /*
@@ -815,8 +832,8 @@ void Zf(keygen)(inner_shake256_context *rng,
  * This function uses floating-point rounding (see set_fpu_cw()).
  */
 void Zf(expand_privkey)(fpr *restrict expanded_key,
-	const int8_t *f, const int8_t *g, const int8_t *F, const int8_t *G,
-	unsigned logn, uint8_t *restrict tmp);
+						const int8_t *f, const int8_t *g, const int8_t *F, const int8_t *G,
+						unsigned logn, uint8_t *restrict tmp);
 
 /*
  * Compute a signature over the provided hashed message (hm); the
@@ -834,8 +851,8 @@ void Zf(expand_privkey)(fpr *restrict expanded_key,
  * This function uses floating-point rounding (see set_fpu_cw()).
  */
 void Zf(sign_tree)(int16_t *sig, inner_shake256_context *rng,
-	const fpr *restrict expanded_key,
-	const uint16_t *hm, unsigned logn, uint8_t *tmp);
+				   const fpr *restrict expanded_key,
+				   const uint16_t *hm, unsigned logn, uint8_t *tmp);
 
 /*
  * Compute a signature over the provided hashed message (hm); the
@@ -855,9 +872,9 @@ void Zf(sign_tree)(int16_t *sig, inner_shake256_context *rng,
  * This function uses floating-point rounding (see set_fpu_cw()).
  */
 void Zf(sign_dyn)(int16_t *sig, inner_shake256_context *rng,
-	const int8_t *restrict f, const int8_t *restrict g,
-	const int8_t *restrict F, const int8_t *restrict G,
-	const uint16_t *hm, unsigned logn, uint8_t *tmp);
+				  const int8_t *restrict f, const int8_t *restrict g,
+				  const int8_t *restrict F, const int8_t *restrict G,
+				  const uint16_t *hm, unsigned logn, uint8_t *tmp);
 
 /*
  * Internal sampler engine. Exported for tests.
@@ -878,7 +895,8 @@ void Zf(sign_dyn)(int16_t *sig, inner_shake256_context *rng,
  * nonnegative).
  */
 
-typedef struct {
+typedef struct
+{
 	prng p;
 	fpr sigma_min;
 } sampler_context;

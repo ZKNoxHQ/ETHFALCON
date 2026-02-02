@@ -28,6 +28,12 @@ char AlgName[] = "My Alg Name";
 #define STR(x) STR_(x)
 #define STR_(x) #x
 
+#if ETHFALCON
+#define ETH_SUFFIX "_eth"
+#else
+#define ETH_SUFFIX ""
+#endif
+
 int main()
 {
 #ifdef ALGNAME
@@ -53,9 +59,9 @@ int main()
 
     // Create the REQUEST file
 #ifdef ALGNAME
-    fn_req = "PQCsignKAT_" STR(ALGNAME) ".req";
+    fn_req = "PQCsignKAT_" STR(ALGNAME) ETH_SUFFIX ".req";
 #else
-    sprintf(fn_req, "PQCsignKAT_%d.req", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_req, "PQCsignKAT_%d" ETH_SUFFIX ".req", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_req = fopen(fn_req, "w")) == NULL)
     {
@@ -63,9 +69,9 @@ int main()
         return KAT_FILE_OPEN_ERROR;
     }
 #ifdef ALGNAME
-    fn_rsp = "PQCsignKAT_" STR(ALGNAME) ".rsp";
+    fn_rsp = "PQCsignKAT_" STR(ALGNAME) ETH_SUFFIX ".rsp";
 #else
-    sprintf(fn_rsp, "PQCsignKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_rsp, "PQCsignKAT_%d" ETH_SUFFIX ".rsp", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_rsp = fopen(fn_rsp, "w")) == NULL)
     {

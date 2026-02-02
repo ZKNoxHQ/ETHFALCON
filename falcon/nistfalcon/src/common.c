@@ -32,8 +32,7 @@
 #include "inner.h"
 
 /* see inner.h */
-void
-Zf(hash_to_point_vartime)(
+void Zf(hash_to_point_vartime)(
 	inner_shake256_context *sc,
 	uint16_t *x, unsigned logn)
 {
@@ -50,25 +49,63 @@ Zf(hash_to_point_vartime)(
 	size_t n;
 
 	n = (size_t)1 << logn;
-	while (n > 0) {
+	while (n > 0)
+	{
 		uint8_t buf[2];
 		uint32_t w;
 
 		inner_shake256_extract(sc, (void *)buf, sizeof buf);
 		w = ((unsigned)buf[0] << 8) | (unsigned)buf[1];
-		if (w < 61445) {
-			while (w >= 12289) {
+		if (w < 61445)
+		{
+			while (w >= 12289)
+			{
 				w -= 12289;
 			}
-			*x ++ = (uint16_t)w;
-			n --;
+			*x++ = (uint16_t)w;
+			n--;
 		}
 	}
 }
 
 /* see inner.h */
-void
-Zf(hash_to_point_ct)(
+void Zf(keccak_hash_to_point_vartime)(
+	inner_keccak256_prng_ctx *kc, uint16_t *x, unsigned logn)
+{
+	/*
+	 * This is the straightforward per-the-spec implementation. It
+	 * is not constant-time, thus it might reveal information on the
+	 * plaintext (at least, enough to check the plaintext against a
+	 * list of potential plaintexts) in a scenario where the
+	 * attacker does not have access to the signature value or to
+	 * the public key, but knows the nonce (without knowledge of the
+	 * nonce, the hashed output cannot be matched against potential
+	 * plaintexts).
+	 */
+	size_t n;
+
+	n = (size_t)1 << logn;
+	while (n > 0)
+	{
+		uint8_t buf[2];
+		uint32_t w;
+
+		inner_keccak256_extract(kc, (void *)buf, sizeof buf);
+		w = ((unsigned)buf[0] << 8) | (unsigned)buf[1];
+		if (w < 61445)
+		{
+			while (w >= 12289)
+			{
+				w -= 12289;
+			}
+			*x++ = (uint16_t)w;
+			n--;
+		}
+	}
+}
+
+/* see inner.h */
+void Zf(hash_to_point_ct)(
 	inner_shake256_context *sc,
 	uint16_t *x, unsigned logn, uint8_t *tmp)
 {
@@ -111,8 +148,7 @@ Zf(hash_to_point_ct)(
 		122,
 		154,
 		205,
-		287
-	};
+		287};
 
 	unsigned n, n2, u, m, p, over;
 	uint16_t *tt1, tt2[63];
@@ -128,7 +164,8 @@ Zf(hash_to_point_ct)(
 	over = overtab[logn];
 	m = n + over;
 	tt1 = (uint16_t *)tmp;
-	for (u = 0; u < m; u ++) {
+	for (u = 0; u < m; u++)
+	{
 		uint8_t buf[2];
 		uint32_t w, wr;
 
@@ -138,11 +175,16 @@ Zf(hash_to_point_ct)(
 		wr = wr - ((uint32_t)24578 & (((wr - 24578) >> 31) - 1));
 		wr = wr - ((uint32_t)12289 & (((wr - 12289) >> 31) - 1));
 		wr |= ((w - 61445) >> 31) - 1;
-		if (u < n) {
+		if (u < n)
+		{
 			x[u] = (uint16_t)wr;
-		} else if (u < n2) {
+		}
+		else if (u < n2)
+		{
 			tt1[u - n] = (uint16_t)wr;
-		} else {
+		}
+		else
+		{
 			tt2[u - n2] = (uint16_t)wr;
 		}
 	}
@@ -156,7 +198,8 @@ Zf(hash_to_point_ct)(
 	 * has to be moved down by p slots, the destination slot is
 	 * "free" (i.e. contains an invalid value).
 	 */
-	for (p = 1; p <= over; p <<= 1) {
+	for (p = 1; p <= over; p <<= 1)
+	{
 		unsigned v;
 
 		/*
@@ -173,15 +216,21 @@ Zf(hash_to_point_ct)(
 		 *     u-p. The address of the swap destination is d.
 		 */
 		v = 0;
-		for (u = 0; u < m; u ++) {
+		for (u = 0; u < m; u++)
+		{
 			uint16_t *s, *d;
 			unsigned j, sv, dv, mk;
 
-			if (u < n) {
+			if (u < n)
+			{
 				s = &x[u];
-			} else if (u < n2) {
+			}
+			else if (u < n2)
+			{
 				s = &tt1[u - n];
-			} else {
+			}
+			else
+			{
 				s = &tt2[u - n2];
 			}
 			sv = *s;
@@ -205,18 +254,24 @@ Zf(hash_to_point_ct)(
 			 * In this loop we consider jumps by p slots; if
 			 * u < p then there is nothing more to do.
 			 */
-			if (u < p) {
+			if (u < p)
+			{
 				continue;
 			}
 
 			/*
 			 * Destination for the swap: value at address u-p.
 			 */
-			if ((u - p) < n) {
+			if ((u - p) < n)
+			{
 				d = &x[u - p];
-			} else if ((u - p) < n2) {
+			}
+			else if ((u - p) < n2)
+			{
 				d = &tt1[(u - p) - n];
-			} else {
+			}
+			else
+			{
 				d = &tt2[(u - p) - n2];
 			}
 			dv = *d;
@@ -239,7 +294,7 @@ Zf(hash_to_point_ct)(
  * are _inclusive_ (they are equal to floor(beta^2)).
  */
 static const uint32_t l2bound[] = {
-	0,    /* unused */
+	0, /* unused */
 	101498,
 	208714,
 	428865,
@@ -249,12 +304,10 @@ static const uint32_t l2bound[] = {
 	7959734,
 	16468416,
 	34034726,
-	70265242
-};
+	70265242};
 
 /* see inner.h */
-int
-Zf(is_short)(
+int Zf(is_short)(
 	const int16_t *s1, const int16_t *s2, unsigned logn)
 {
 	/*
@@ -268,7 +321,8 @@ Zf(is_short)(
 	n = (size_t)1 << logn;
 	s = 0;
 	ng = 0;
-	for (u = 0; u < n; u ++) {
+	for (u = 0; u < n; u++)
+	{
 		int32_t z;
 
 		z = s1[u];
@@ -284,8 +338,7 @@ Zf(is_short)(
 }
 
 /* see inner.h */
-int
-Zf(is_short_half)(
+int Zf(is_short_half)(
 	uint32_t sqn, const int16_t *s2, unsigned logn)
 {
 	size_t n, u;
@@ -293,7 +346,8 @@ Zf(is_short_half)(
 
 	n = (size_t)1 << logn;
 	ng = -(sqn >> 31);
-	for (u = 0; u < n; u ++) {
+	for (u = 0; u < n; u++)
+	{
 		int32_t z;
 
 		z = s2[u];
