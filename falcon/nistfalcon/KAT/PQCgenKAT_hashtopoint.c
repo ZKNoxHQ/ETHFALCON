@@ -19,6 +19,12 @@
 #define KAT_DATA_ERROR -3
 #define KAT_CRYPTO_FAILURE -4
 
+#if ETHFALCON
+#define ETH_SUFFIX "_eth"
+#else
+#define ETH_SUFFIX ""
+#endif
+
 int FindMarker(FILE *infile, const char *marker);
 int ReadHex(FILE *infile, unsigned char *A, int Length, char *str);
 void fprintBstr(FILE *fp, char *S, unsigned char *A, unsigned long long L);
@@ -52,14 +58,18 @@ int main()
     // randombytes modifies the nonce
     static unsigned char pk[CRYPTO_PUBLICKEYBYTES], sk[CRYPTO_SECRETKEYBYTES];
     static unsigned char nonce[40]; // NONCELEN=40
+#if ETHFALCON
+    static inner_keccak256_prng_ctx kc;
+#else
     static inner_shake256_context sc;
+#endif
     static uint16_t hm[512];
 
     // Create the REQUEST file
 #ifdef ALGNAME
-    fn_req = "PQChashtopointKAT_" STR(ALGNAME) ".req";
+    fn_req = "PQC" ETH_SUFFIX "hashtopointKAT_" STR(ALGNAME) ".req";
 #else
-    sprintf(fn_req, "PQChashtopointKAT_%d.req", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_req, "PQC" ETH_SUFFIX "hashtopointKAT_%d.req", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_req = fopen(fn_req, "w")) == NULL)
     {
@@ -67,9 +77,9 @@ int main()
         return KAT_FILE_OPEN_ERROR;
     }
 #ifdef ALGNAME
-    fn_rsp = "PQChashtopointKAT_" STR(ALGNAME) ".rsp";
+    fn_rsp = "PQC" ETH_SUFFIX "hashtopointKAT_" STR(ALGNAME) ".rsp";
 #else
-    sprintf(fn_rsp, "PQChashtopointKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
+    sprintf(fn_rsp, "PQC" ETH_SUFFIX "hashtopointKAT_%d.rsp", CRYPTO_SECRETKEYBYTES);
 #endif
     if ((fp_rsp = fopen(fn_rsp, "w")) == NULL)
     {
@@ -168,12 +178,20 @@ int main()
         /*
          * Hash message nonce + message into a vector.
          */
+
+#if ETHFALCON
+        inner_keccak256_init(&kc);
+        inner_keccak256_inject(&kc, nonce, sizeof nonce);
+        inner_keccak256_inject(&kc, m, mlen);
+        inner_keccak256_flip(&kc);
+        Zf(keccak_hash_to_point_vartime)(&kc, hm, 9);
+#else
         inner_shake256_init(&sc);
         inner_shake256_inject(&sc, nonce, sizeof nonce);
         inner_shake256_inject(&sc, m, mlen);
         inner_shake256_flip(&sc);
         Zf(hash_to_point_vartime)(&sc, hm, 9);
-
+#endif
         fprintf(fp_rsp, "salt = ");
         for (size_t i = 0; i < sizeof nonce; i++)
         {

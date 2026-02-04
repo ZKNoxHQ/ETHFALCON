@@ -27,7 +27,10 @@ OBJ3 = build/PQCgenKAT_sign_zknox.o build/katrng.o
 OBJ3_ETH = build/PQCgenKAT_sign_zknox_eth.o build/katrng.o
 
 OBJ4 = build/PQCgenKAT_sign_epervier_zknox.o build/katrng.o
+
 OBJ5 = build/PQCgenKAT_hashtopoint.o build/katrng.o
+OBJ5_ETH = build/PQCgenKAT_hashtopoint_eth.o build/katrng.o
+
 OBJ6 = build/PQCgenKAT_falconcore.o build/katrng.o
 OBJ7 = build/PQCgenKAT_sign_eth.o build/katrng.o
 
@@ -36,7 +39,8 @@ HEAD2 = src/api.h src/katrng.h
 
 all: build build/kat512int build/kat512int_hashtopoint build/kat512int_falconcore \
      build/kat512int_zknox build/kat512int_epervier_zknox \
-     build/kat512int_eth build/kat512int_zknox_eth
+     build/kat512int_eth build/kat512int_zknox_eth \
+	 build/kat512int_hashtopoint_eth
 
 build:
 	-mkdir build
@@ -60,6 +64,9 @@ build/kat512int_epervier_zknox: $(OBJ1) $(OBJ4)
 
 build/kat512int_hashtopoint: $(OBJ1) $(OBJ5)
 	$(LD) $(LDFLAGS) -o build/kat512int_hashtopoint $(OBJ1) $(OBJ5) $(LIBS)
+
+build/kat512int_hashtopoint_eth: $(OBJ1_ETH) $(OBJ5_ETH)
+	$(LD) $(LDFLAGS) -o build/kat512int_hashtopoint_eth $(OBJ1_ETH) $(OBJ5_ETH) $(LIBS)
 
 build/kat512int_falconcore: $(OBJ1) $(OBJ6)
 	$(LD) $(LDFLAGS) -o build/kat512int_falconcore $(OBJ1) $(OBJ6) $(LIBS)
@@ -132,6 +139,9 @@ build/PQCgenKAT_sign_epervier_zknox.o: KAT/PQCgenKAT_sign_epervier_zknox.c $(HEA
 	
 build/PQCgenKAT_hashtopoint.o: KAT/PQCgenKAT_hashtopoint.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_hashtopoint.o KAT/PQCgenKAT_hashtopoint.c
+
+build/PQCgenKAT_hashtopoint_eth.o: KAT/PQCgenKAT_hashtopoint.c $(HEAD2)
+	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -DETHFALCON -c -o build/PQCgenKAT_hashtopoint_eth.o KAT/PQCgenKAT_hashtopoint.c
 
 build/PQCgenKAT_falconcore.o: KAT/PQCgenKAT_falconcore.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -c -o build/PQCgenKAT_falconcore.o KAT/PQCgenKAT_falconcore.c
