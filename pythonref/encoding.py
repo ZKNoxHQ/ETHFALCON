@@ -77,3 +77,19 @@ def decompress(x, slen, n):
     # IndexError is raised if indices are read outside the table bounds
     except IndexError:
         return False
+
+def decode16(x:bytes, n: int, q=12289):
+    """
+    Convert a byte array of even length into a list of 16-bit integers.
+
+    Each pair of bytes is interpreted as:
+      byte0 + 2^8 * byte1, byte2 + 2^8 * byte3, ...
+    """
+    if len(x) % 2 != 0:
+        raise ValueError("Length of input must be even")
+
+    out = []
+    for i in range(0, len(x), 2):
+        val = x[i+1] + (x[i] << 8)
+        out.append(val)
+    return out

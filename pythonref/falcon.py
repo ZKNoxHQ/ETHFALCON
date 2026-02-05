@@ -195,9 +195,6 @@ def hash_to_point(n, message, salt, xof=KeccakPRNG):
     if xof == Blake2sPRNG:
         # /!\ hashing salt to get only 32 bytes (for cairo implementation)
         salt = blake2s(salt).digest()
-    if xof != SHAKE:
-        # /!\ Reversed compared to NIST
-        salt, message = message, salt
     # Create a XOF object and hash the salt and message.
     xof = xof.new()
     xof.update(salt)
@@ -235,6 +232,57 @@ class PublicKey:
         rep = "Public for n = {}:\n\n".format(self.n)
         rep += "pk = {}\n".format(self.pk)
         return rep
+
+    @classmethod
+    def from_bytes(cls, pk_bytes: bytes):
+        """
+        Create a PublicKey from the NIST-format version.
+
+        Format:
+        - 1 byte header: 0x09
+        - 896 bytes: 512 coefficients, each 14 bits
+
+        Returns:
+        The corresponding PublicKey
+        """
+
+        if len(pk_bytes) not in (897, 1792):
+            raise ValueError("Invalid public key length (must be 897 or 1792 bytes)")
+
+        # Check header
+        if pk_bytes[0] == 0x09:
+            n = 512
+        elif pk_bytes[0] == 0x0A:
+            n = 1024
+        else:
+            raise ValueError("Invalid Falcon public key header")
+
+        data = pk_bytes[1:]  # Remove header
+
+        h = []
+        acc = 0
+        acc_bits = 0
+
+        for b in data:
+            acc = (acc << 8) | b
+            acc_bits += 8
+
+            while acc_bits >= 14 and len(h) < n:
+                acc_bits -= 14
+
+                val = (acc >> acc_bits) & 0x3FFF
+
+                if val >= 12289:
+                    raise ValueError("Invalid coefficient")
+
+                h.append(val)
+
+                acc &= (1 << acc_bits) - 1
+
+        if len(h) != n:
+            raise ValueError("Wrong number of coefficients")
+
+        return cls(n, h)
 
     def verify(self, message, signature, ntt=NTTIterative, xof=KeccakPRNG):
         """
