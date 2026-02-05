@@ -45,14 +45,13 @@ import "./ZKNOX_shake.sol";
 
 uint256 constant MASK_2BYTES = uint256(0xFFFF);
 
-// OPTIMIZATION: Added memory-safe annotation to existing assembly
 function hashToPointRIP(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory output) {
     output = new uint256[](n);
 
     bytes32 state;
 
     // Initial state
-    state = keccak256(abi.encodePacked(msgHash, salt));
+    state = keccak256(abi.encodePacked(salt, msgHash));
     bytes memory extendedState = abi.encodePacked(state, uint64(0x00));
 
     assembly ("memory-safe") {
