@@ -51,20 +51,6 @@ import {ISigVerifier} from "InterfaceVerifier/IVerifier.sol";
 /// @custom:experimental This library is not audited yet, do not use in production.
 
 contract ZKNOX_falcon is ISigVerifier {
-    // ZKNOX_NTT ntt;
-    address public psirev;
-    address public psiInvrev;
-    bool EIP7885;
-    bool immutableMe;
-
-    function update(address i_psirev, address i_psiInvrev) public {
-        if (immutableMe == true) revert();
-        psirev = i_psirev;
-        psiInvrev = i_psiInvrev;
-        EIP7885 = false;
-        immutableMe = true;
-    }
-
     struct CompactSignature {
         bytes salt;
         uint256[] s2; // compacted signature
