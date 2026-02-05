@@ -10,11 +10,7 @@ import "../src/ZKNOX_falcon_deploy.sol";
 /// @notice Tests ZKNOX_ethfalcon against NIST KAT (Known Answer Test) files
 /// @dev Parses falcon512-KAT.req and ethfalcon512-KAT.rsp files and verifies signatures
 contract ETHFalconKATFileTest is Test {
-    ZKNOX_ethfalcon falcon;
-
-    function setUp() public {
-        falcon = new ZKNOX_ethfalcon();
-    }
+    ZKNOX_ethfalcon falcon = new ZKNOX_ethfalcon();
 
     /// @notice Parse KAT response file and verify all 100 test vectors
     /// @dev Reads ethfalcon512-KAT.rsp and verifies all signatures

@@ -10,17 +10,7 @@ import "../src/ZKNOX_falcon_deploy.sol";
 /// @notice Tests ZKNOX_falcon against NIST KAT (Known Answer Test) files
 /// @dev Parses falcon512-KAT.req and falcon512-KAT.rsp files and verifies signatures
 contract FalconKATFileTest is Test {
-    ZKNOX_falcon falcon;
-
-    function setUp() public {
-        bytes32 salt = keccak256(abi.encodePacked("ZKnox"));
-        falcon = new ZKNOX_falcon();
-
-        address a_psirev;
-        address a_psiInvrev;
-        (a_psirev, a_psiInvrev) = Deploy(salt);
-        falcon.update(a_psirev, a_psiInvrev);
-    }
+    ZKNOX_falcon falcon = new ZKNOX_falcon();
 
     /// @notice Parse KAT response file and verify all 100 test vectors
     /// @dev Reads falcon512-KAT.rsp and verifies all signatures
