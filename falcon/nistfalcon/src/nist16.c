@@ -199,7 +199,7 @@ int zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	 *   signature            slen bytes
 	 */
 	esig[0] = 0x20 + 9;
-	sig_len = Zf(comp_encode16)(esig + 1, ZKNOX_CRYPTO_BYTES - 1, r.sig, 9);
+	sig_len = Zf(comp_encode16)(esig + 1, sizeof(esig) - 1, r.sig, 9);
 	if (sig_len == 0)
 	{
 		return -1;
