@@ -96,16 +96,16 @@ function hashToPointNIST(bytes memory salt, bytes memory msgHash) pure returns (
     uint256[] memory hashed = new uint256[](512);
     uint256 i = 0;
     uint256 j = 0;
-    ctx_shake memory ctx;
+    CtxShake memory ctx;
     bytes memory tmp;
-    ctx = shake_update(ctx, abi.encodePacked(salt, msgHash));
-    ctx = shake_pad(ctx);
-    (ctx, tmp) = shake_squeeze(ctx, _RATE);
+    ctx = shakeUpdate(ctx, abi.encodePacked(salt, msgHash));
+    ctx = shakePad(ctx);
+    (ctx, tmp) = shakeSqueeze(ctx, _RATE);
 
     unchecked {
         while (i < n) {
             if (j == _RATE) {
-                (ctx, tmp) = shake_squeeze(ctx, _RATE);
+                (ctx, tmp) = shakeSqueeze(ctx, _RATE);
                 j = 0;
             }
             uint256 dibytes = uint256(uint8(tmp[j + 1])) + (uint256(uint8(tmp[j])) << 8);
