@@ -33,7 +33,15 @@
 ///* FILE: ZKNOX_NTT_falcon.sol
 ///* Description: Compute Negative Wrap Convolution NTT as specified in EIP-NTT, specific FALCON case
 /**
+ * OPTIMIZATION vs previous version:
  *
+ * Pointer-based butterfly inner loop (same technique as Dilithium NTT):
+ *   - Eliminated `add(aBase, shl(5, j))` index→address conversion (6 gas/butterfly)
+ *   - Inner loop walks a pointer directly: ptr += 32
+ *   - nttInv final scaling loop also pointer-based
+ *
+ * For Falcon-512 (n=512, 9 layers, 2304 butterflies/NTT):
+ *   Savings: ~6 gas × 2304 = ~14k gas per NTT call
  */
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
@@ -42,7 +50,6 @@ import "./ZKNOX_falcon_utils.sol";
 
 //// internal version to spare call data cost
 
-// OPTIMIZATION: Hoisted loop-invariant calculations, precalculated bounds
 function _ZKNOX_NTTFW_vectorized(uint256[] memory a) pure returns (uint256[] memory) {
     uint256[32] memory psirev = [
         uint256(0x16e40c7b04bc29930e25261022510dd61fdb166802d22ae80fcb1be72a3a0001),
@@ -82,49 +89,46 @@ function _ZKNOX_NTTFW_vectorized(uint256[] memory a) pure returns (uint256[] mem
     uint256 t = n;
     uint256 m = 1;
 
-    uint256 S;
-
     assembly ("memory-safe") {
-        let aBase := add(a, 32) // OPTIMIZATION: base address computed once
+        let base := add(a, 32)
 
         for {} lt(m, n) {} {
-            //while(m<n)
             t := shr(1, t)
-            let t32 := shl(5, t) // OPTIMIZATION: mul(t, 32) hoisted out of j loop
+            let t_bytes := shl(5, t) // t * 32
 
             for { let i := 0 } lt(i, m) { i := add(i, 1) } {
-                let j1 := shl(1, mul(i, t))
-                let jEnd := add(j1, t) // OPTIMIZATION: precalculated loop bound (was add(j2, 1))
-
-                //uint256 S = psirev[m+i];
+                // Twiddle factor extraction (unchanged)
                 let mi := add(m, i)
-                S := mload(add(psirev, shl(5, shr(4, mi)))) // OPTIMIZATION: shl(5, x) instead of mul(32, x)
-                S := and(shr(shl(4, and(mi, 0xf)), S), 0xffff) // OPTIMIZATION: shl(4, x) instead of mul(16, x)
+                let S := mload(add(psirev, shl(5, shr(4, mi))))
+                S := and(shr(shl(4, and(mi, 0xf)), S), 0xffff)
 
-                for { let j := j1 } lt(j, jEnd) { j := add(j, 1) } {
-                    let a_aj := add(aBase, shl(5, j)) //address of a[j]
-                    let U := mload(a_aj)
+                // OPTIMIZATION: pointer-based butterfly
+                // ptr = base + j1 * 32 = base + 2*i*t*32 = base + i*t*64
+                let ptr := add(base, shl(6, mul(i, t)))
+                let ptr_end := add(ptr, t_bytes)
 
-                    let a_ajt := add(a_aj, t32) //address of a[j+t]
-                    let V := mulmod(mload(a_ajt), S, q)
-                    mstore(a_ajt, addmod(U, sub(q, V), q))
-                    mstore(a_aj, addmod(U, V, q))
+                for {} lt(ptr, ptr_end) { ptr := add(ptr, 32) } {
+                    let U := mload(ptr)
+                    let ptr_t := add(ptr, t_bytes)
+                    let V := mulmod(mload(ptr_t), S, q)
+                    mstore(ptr_t, addmod(U, sub(q, V), q))
+                    mstore(ptr, addmod(U, V, q))
                 }
             }
-            m := shl(1, m) //m=m<<1
+            m := shl(1, m)
         }
     }
     return a;
 }
 
-// OPTIMIZATION: Full assembly implementation instead of Solidity loop
+// Already optimized — no changes needed
 function _ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b) pure returns (uint256[] memory res) {
     res = new uint256[](n);
     assembly ("memory-safe") {
         let aPtr := add(a, 32)
         let bPtr := add(b, 32)
         let resPtr := add(res, 32)
-        let endPtr := add(resPtr, shl(5, n)) // n * 32
+        let endPtr := add(resPtr, shl(5, n))
 
         for {} lt(resPtr, endPtr) {} {
             mstore(resPtr, mulmod(mload(aPtr), mload(bPtr), q))
@@ -135,7 +139,6 @@ function _ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b) pure returns (
     }
 }
 
-// OPTIMIZATION: Hoisted loop-invariant calculations, precalculated bounds
 function _ZKNOX_NTTINV_vectorized(uint256[] memory a) pure returns (uint256[] memory) {
     uint256[32] memory psirev = [
         0x222b0db009f121dc066e2b452386191d05192d2f19991026141a203605c70001,
@@ -175,43 +178,45 @@ function _ZKNOX_NTTINV_vectorized(uint256[] memory a) pure returns (uint256[] me
     uint256 t = 1;
     uint256 m = n;
 
-    uint256 S;
-
     assembly ("memory-safe") {
-        let aBase := add(a, 32) // OPTIMIZATION: base address computed once
+        let base := add(a, 32)
 
         for {} gt(m, 1) {} {
-            // while(m > 1)
-            let j1 := 0
-            let h := shr(1, m) //uint h = m>>1;
-            let t32 := shl(5, t) // OPTIMIZATION: mul(t, 32) hoisted out of j loop
-            let t2 := shl(1, t) // OPTIMIZATION: 2*t for j1 increment
+            let h := shr(1, m)
+            let t_bytes := shl(5, t)
+            let stride := shl(1, t_bytes) // 2 * t * 32
+
+            let group_ptr := base
 
             for { let i := 0 } lt(i, h) { i := add(i, 1) } {
-                let jEnd := add(j1, t) // OPTIMIZATION: precalculated loop bound
+                // Twiddle factor extraction (unchanged)
                 let hi := add(h, i)
-                S := mload(add(psirev, shl(5, shr(4, hi)))) // OPTIMIZATION: shl(5, x) instead of mul(32, x)
-                S := and(shr(shl(4, and(hi, 0xf)), S), 0xffff) // OPTIMIZATION: shl(4, x) instead of mul(16, x)
+                let S := mload(add(psirev, shl(5, shr(4, hi))))
+                S := and(shr(shl(4, and(hi, 0xf)), S), 0xffff)
 
-                for { let j := j1 } lt(j, jEnd) { j := add(j, 1) } {
-                    let a_aj := add(aBase, shl(5, j)) //address of a[j]
-                    let U := mload(a_aj) //U=a[j];
-                    let a_ajt := add(a_aj, t32) //address of a[j+t]
-                    let V := mload(a_ajt)
-                    mstore(a_ajt, mulmod(addmod(U, sub(q, V), q), S, q)) //a[j+t]=mulmod(addmod(U,q-V,q),S[0],q);
-                    mstore(a_aj, addmod(U, V, q)) // a[j]=addmod(U,V,q);
-                } //end loop j
-                j1 := add(j1, t2) //j1=j1+2t
-            } //end loop i
+                // OPTIMIZATION: pointer-based butterfly
+                let ptr := group_ptr
+                let ptr_end := add(ptr, t_bytes)
+
+                for {} lt(ptr, ptr_end) { ptr := add(ptr, 32) } {
+                    let U := mload(ptr)
+                    let ptr_t := add(ptr, t_bytes)
+                    let V := mload(ptr_t)
+                    mstore(ptr_t, mulmod(addmod(U, sub(q, V), q), S, q))
+                    mstore(ptr, addmod(U, V, q))
+                }
+
+                group_ptr := add(group_ptr, stride)
+            }
             t := shl(1, t)
             m := shr(1, m)
-        } //end while
+        }
 
-
-        // OPTIMIZATION: use constant n instead of mload(a)
-        for { let j := 0 } lt(j, n) { j := add(j, 1) } {
-            let a_aj := add(aBase, shl(5, j)) //address of a[j]
-            mstore(a_aj, mulmod(mload(a_aj), nm1modq, q))
+        // Final scaling — pointer-based
+        let ptr := base
+        let ptr_end := add(base, shl(5, n)) // n * 32
+        for {} lt(ptr, ptr_end) { ptr := add(ptr, 32) } {
+            mstore(ptr, mulmod(mload(ptr), nm1modq, q))
         }
     }
 
