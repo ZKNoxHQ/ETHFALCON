@@ -101,7 +101,7 @@ contract ZKNOX_ethepervier {
 
         //ntt(s2)*ntt(s2^-1)==ntt(1)?
         norm = 0; //accumulate the boolean   of testing condition
-        uint256[] memory hashed = hashToPointRIP(salt, msgs);
+        uint256[] memory hashed = hashToPointEVM(salt, msgs);
 
         assembly {
             for { let offset := 32 } gt(16416, offset) { offset := add(offset, 32) } {

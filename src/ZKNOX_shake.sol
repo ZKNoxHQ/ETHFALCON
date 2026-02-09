@@ -2,31 +2,48 @@
 // License: This software is licensed under MIT License
 // This Code may be reused including this header, license and copyright notice.
 // FILE: ZKNOX_shake.sol
-// Description: verify falcon core component
+// Description: SHAKE256 XOF implementation optimized for EVM with Keccak-f[1600] permutation
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+/// @dev SHAKE256 rate in bytes (1088 bits = 136 bytes for SHAKE256)
 uint256 constant _RATE = 136;
+
+/// @dev Sponge state direction indicator - absorbing phase
 bool constant _SPONGE_ABSORBING = false;
+
+/// @dev Sponge state direction indicator - squeezing phase
 bool constant _SPONGE_SQUEEZING = true;
 
+/// @notice Context structure for SHAKE256 sponge operations
+/// @dev Maintains the complete state for incremental hashing and squeezing
 struct CtxShake {
-    uint64[25] state;
-    uint8[200] buff;
-    uint256 i;
-    bool direction;
+    uint64[25] state; // Keccak-f[1600] state (25 × 64-bit lanes)
+    uint8[200] buff; // Input buffer for absorption (rate + capacity = 200 bytes)
+    uint256 i; // Current position in buffer
+    bool direction; // Current sponge direction (absorbing or squeezing)
 }
 
+/// @notice Performs 64-bit rotation left operation
+/// @dev Implements ROL64(x, s) = (x << s) | (x >> (64-s)) for Keccak rho step
+/// @param x Value to rotate
+/// @param s Rotation amount (0-63)
+/// @return Rotated 64-bit value
 function rol64(uint256 x, uint256 s) pure returns (uint64) {
     return (uint64)((x << s) ^ (x >> (64 - s)));
 }
 
 /**
- * OPTIMIZATION: f1600 with:
- *   1. FIXED: RC applied only ONCE after all 5 Chi y-rows (was applied 5x — 4 redundant)
- *      Saves ~1,152 gas per f1600 call × ~5 calls = ~5-7k gas
- *   2. Unrolled Theta step 2 (eliminates addmod)
- *   3. Unrolled Chi step (eliminates addmod for x offsets)
+ * @notice Keccak-f[1600] permutation function with EVM-optimized implementation
+ * @dev Implements the 24-round Keccak-f[1600] permutation with gas optimizations:
+ *      1. RC (Round Constant) applied only ONCE to state[0] per round (not per y-row)
+ *         Standard Keccak applies RC only to state[0,0], not to each row
+ *         This optimization saves ~1,152 gas per call × ~5 calls = ~5-7k gas total
+ *      2. Theta step 2 fully unrolled to eliminate modular arithmetic overhead
+ *      3. Chi step fully unrolled for all 5 y-rows to eliminate loop overhead
+ * @dev The state is a 5×5 array of 64-bit lanes, stored linearly in memory
+ * @param state 25-element array representing the Keccak state (5×5 lanes of 64 bits each)
+ * @return Updated state after 24 rounds of Keccak-f[1600] permutation
  */
 function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
     // forgefmt: disable-next-line
@@ -120,14 +137,14 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 let c2 := mload(add(state, 64))
                 let c3 := mload(add(state, 96))
                 let c4 := mload(add(state, 128))
-                // FIX: Apply RC to state[0] inline with Chi for y=0 — only once
+                // FIX: Apply RC to state[0] inline with Chi for y=0 - only once per round
                 mstore(state, and(xor(xor(c0, and(xor(c1, 0xffffffffffffffff), c2)), rc), 0xffffffffffffffff))
                 mstore(add(state, 32), xor(c1, and(xor(c2, 0xffffffffffffffff), c3)))
                 mstore(add(state, 64), xor(c2, and(xor(c3, 0xffffffffffffffff), c4)))
                 mstore(add(state, 96), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
                 mstore(add(state, 128), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
             }
-            // NO RC here — already applied above
+            // NO RC here - already applied above
 
             // y=1, offset=160
             {
@@ -187,12 +204,21 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 mstore(add(state, 736), xor(c3, and(xor(c4, 0xffffffffffffffff), c0)))
                 mstore(add(state, 768), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
             }
-            // NO RC here — was the 5th redundant application
+            // NO RC here - was the 5th redundant application
         }
     }
     return state;
 }
 
+/// @notice Absorbs input data into the SHAKE sponge state
+/// @dev Processes input in chunks up to the rate (_RATE bytes), applying permutation when buffer is full
+/// @param i Current position in the buffer
+/// @param buf Buffer containing previously absorbed data
+/// @param state Current Keccak state
+/// @param input Data to absorb into the sponge
+/// @return iout Updated buffer position
+/// @return bufout Updated buffer with absorbed data
+/// @return stateout Updated state after absorption
 function shakeAbsorb(uint256 i, uint8[200] memory buf, uint64[25] memory state, bytes memory input)
     pure
     returns (uint256 iout, uint8[200] memory bufout, uint64[25] memory stateout)
@@ -221,6 +247,9 @@ function shakeAbsorb(uint256 i, uint8[200] memory buf, uint64[25] memory state, 
     return (i, buf, state);
 }
 
+/// @notice Initializes a new SHAKE256 context
+/// @dev Creates a context with zeroed state, buffer, and position set to absorbing mode
+/// @return ctx Initialized SHAKE256 context ready for absorption
 function shakeInit() pure returns (CtxShake memory ctx) {
     // forgefmt: disable-next-line
         ctx.state=[uint64(0),0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];// forgefmt: disable-next-line
@@ -229,6 +258,11 @@ function shakeInit() pure returns (CtxShake memory ctx) {
     return ctx;
 }
 
+/// @notice Updates SHAKE context with new input data
+/// @dev If currently squeezing, performs permutation before absorbing. Sets context to absorbing mode.
+/// @param ctx Current SHAKE context
+/// @param input Data to absorb
+/// @return ctxout Updated context after absorption
 function shakeUpdate(CtxShake memory ctx, bytes memory input) pure returns (CtxShake memory ctxout) {
     if (ctx.direction == _SPONGE_SQUEEZING) {
         (ctx.buff, ctx.state) = shakePermute(ctx.buff, ctx.state);
@@ -238,6 +272,12 @@ function shakeUpdate(CtxShake memory ctx, bytes memory input) pure returns (CtxS
     return ctxout;
 }
 
+/// @notice Squeezes output bytes from the SHAKE sponge
+/// @dev Extracts n bytes from the current state, performing permutation when needed
+/// @param ctx Current SHAKE context
+/// @param n Number of bytes to squeeze
+/// @return ctxout Updated context after squeezing
+/// @return output Squeezed bytes
 function shakeSqueeze(CtxShake memory ctx, uint256 n) pure returns (CtxShake memory ctxout, bytes memory) {
     bytes memory output = new bytes(n);
     uint256 tosqueeze = n;
@@ -266,16 +306,20 @@ function shakeSqueeze(CtxShake memory ctx, uint256 n) pure returns (CtxShake mem
 }
 
 /**
- * OPTIMIZATION: Process buf→state XOR in uint64 chunks (25 iterations vs 200)
- * Each iteration XORs 8 bytes at once.
- * Estimated savings: ~3k-5k gas per permutation × ~5 calls = ~15-25k gas
+ * @notice Performs XOR of buffer into state and applies Keccak-f[1600] permutation
+ * @dev Optimized to process 8 bytes at a time (25 uint64 words) instead of 200 individual bytes
+ *      This optimization saves ~3-5k gas per permutation × ~5 calls = ~15-25k gas total
+ * @param buf 200-byte buffer to XOR into state
+ * @param state Current 25-word Keccak state
+ * @return buffer Unchanged buffer (returned for consistency)
+ * @return stateout Permuted state after XOR and f1600 application
  */
 function shakePermute(uint8[200] memory buf, uint64[25] memory state)
     pure
     returns (uint8[200] memory buffer, uint64[25] memory stateout)
 {
     assembly {
-        // Process 8 bytes at a time — 25 uint64 words instead of 200 bytes
+        // Process 8 bytes at a time - 25 uint64 words instead of 200 bytes
         for { let w := 0 } lt(w, 25) { w := add(w, 1) } {
             let stateAddr := add(state, mul(w, 32))
             let bufBase := add(buf, mul(mul(w, 8), 32)) // buf is uint8[200], each element at 32-byte slot
@@ -299,6 +343,10 @@ function shakePermute(uint8[200] memory buf, uint64[25] memory state)
     return (buffer, state);
 }
 
+/// @notice Applies SHAKE256 padding to the buffer
+/// @dev Adds domain separation byte 0x1f and padding byte 0x80, then permutes
+/// @param ctx Current SHAKE context
+/// @return ctxout Context after padding with position reset to 0
 function shakePad(CtxShake memory ctx) pure returns (CtxShake memory ctxout) {
     ctx.buff[ctx.i] ^= 0x1f;
     ctx.buff[_RATE - 1] ^= 0x80;
@@ -309,6 +357,11 @@ function shakePad(CtxShake memory ctx) pure returns (CtxShake memory ctxout) {
     return ctx;
 }
 
+/// @notice Finalizes SHAKE256 and produces output digest
+/// @dev Pads the context if in absorbing mode, then squeezes requested number of bytes
+/// @param ctx Current SHAKE context
+/// @param size8 Number of bytes to output
+/// @return output Digest of requested size
 function shakeDigest(CtxShake memory ctx, uint256 size8) pure returns (bytes memory output) {
     output = new bytes(size8);
     if (ctx.direction == _SPONGE_ABSORBING) {

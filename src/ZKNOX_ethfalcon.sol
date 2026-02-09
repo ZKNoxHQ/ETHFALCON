@@ -66,7 +66,7 @@ contract ZKNOX_ethfalcon is ISigVerifier {
             //return false;
         } //"Invalid public key length"
 
-        uint256[] memory hashed = hashToPointRIP(salt, h);
+        uint256[] memory hashed = hashToPointEVM(salt, h);
 
         result = falcon_core(s2, ntth, hashed);
         //if (result == false) revert("wrong sig");

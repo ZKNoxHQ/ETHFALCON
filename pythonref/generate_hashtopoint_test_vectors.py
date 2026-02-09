@@ -23,7 +23,7 @@ shake.flip()
 
 for XOF in [KeccakPRNG, SHAKE, Blake2sPRNG]:
     if XOF == KeccakPRNG:
-        hash_type = "RIP"
+        hash_type = "EVM"
     elif XOF == SHAKE:
         hash_type = "NIST"
     elif XOF == Blake2sPRNG:

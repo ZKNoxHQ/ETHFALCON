@@ -2,30 +2,59 @@
 // License: This software is licensed under MIT License
 // This Code may be reused including this header, license and copyright notice.
 // FILE: ZKNOX_falcon_utils.sol
-// Description: verify falcon core component
+// Description: Utility functions and constants for Falcon signature verification
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+/// @dev Mask for extracting 16-bit values from uint256
 uint256 constant mask16 = 0xffff;
-uint256 constant chunk16Byword = 16; //number of 1§ bits chunks in a word of 256 bits
-uint256 constant falcon_S256 = 32; //number of 256 bits word in a polynomial
-//implemented hash identifiers
+
+/// @dev Number of 16-bit chunks that fit in a 256-bit word
+uint256 constant chunk16Byword = 16;
+
+/// @dev Number of 256-bit words in a Falcon-512 polynomial (32 words × 16 coefficients = 512 total)
+uint256 constant falcon_S256 = 32;
+
+/// @dev Keccak-based hash identifier
 uint256 constant ID_keccak = 0x00;
+
+/// @dev Tetration-based hash identifier (PoC only)
 uint256 constant ID_tetration = 0x01;
 
+/// @dev Number of 256-bit words in a Falcon polynomial
 uint256 constant _FALCON_WORD256_S = 32;
+
+/// @dev Number of 32-bit words (not used in current implementation, for reference)
 uint256 constant _FALCON_WORD32_S = 512;
 
-//FALCON CONSTANTS
+// ==================== FALCON-512 CONSTANTS ====================
+
+/// @dev Polynomial ring degree for Falcon-512
 uint256 constant n = 512;
+
+/// @dev Modular inverse of n modulo q: n^(-1) mod 12289 = 12265
 uint256 constant nm1modq = 12265;
+
+/// @dev Maximum allowed signature norm squared (L2 norm bound)
 uint256 constant sigBound = 34034726;
+
+/// @dev Maximum signature length in bytes (compressed encoding)
 uint256 constant sigBytesLen = 666;
+
+/// @dev Prime modulus for Falcon-512: q = 12289
 uint256 constant q = 12289;
-uint256 constant qs1 = 6144; // q >> 1;
+
+/// @dev Half of q (used for centered reduction): q/2 = 6144
+uint256 constant qs1 = 6144;
+
+/// @dev Rejection sampling bound: 5×q = 61445
 uint256 constant kq = 61445;
 
-// OPTIMIZATION: Assembly implementation instead of Solidity loop
+/// @notice Reverses the order of coefficients in a polynomial
+/// @dev Creates a mirror polynomial where coeff[i] becomes coeff[511-i]
+/// @dev Optimized assembly implementation for gas efficiency
+/// @param Pol Input polynomial with 512 coefficients
+/// @return Mirror Reversed polynomial
 function Swap(uint256[] memory Pol) pure returns (uint256[] memory Mirror) {
     Mirror = new uint256[](512);
     assembly ("memory-safe") {
@@ -40,8 +69,11 @@ function Swap(uint256[] memory Pol) pure returns (uint256[] memory Mirror) {
     }
 }
 
-//return the compacted version of an expanded polynomial
-// OPTIMIZATION: Added memory-safe annotation, use lt instead of gt
+/// @notice Compacts an expanded polynomial from 512 uint256 values to 32 uint256 values
+/// @dev Packs 16 coefficients (each 16 bits) into each 256-bit word
+/// @dev Each word stores coefficients as: word = c0 | (c1<<16) | (c2<<32) | ... | (c15<<240)
+/// @param a Expanded polynomial (512 coefficients as separate uint256 values)
+/// @return b Compacted polynomial (32 uint256 words, each containing 16 coefficients)
 function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b) {
     b = new uint256[](32);
 
@@ -58,8 +90,11 @@ function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b
     return b;
 }
 
-//return the expanded version of a compacted polynomial
-// OPTIMIZATION: Added memory-safe annotation, use lt instead of gt
+/// @notice Expands a compacted polynomial from 32 uint256 values to 512 uint256 values
+/// @dev Unpacks 16 coefficients (each 16 bits) from each 256-bit word into separate uint256 values
+/// @dev Inverse operation of _ZKNOX_NTT_Compact
+/// @param a Compacted polynomial (32 uint256 words)
+/// @return b Expanded polynomial (512 coefficients as separate uint256 values)
 function _ZKNOX_NTT_Expand(uint256[] memory a) pure returns (uint256[] memory b) {
     b = new uint256[](512);
 
@@ -88,8 +123,13 @@ function _ZKNOX_NTT_Expand(uint256[] memory a) pure returns (uint256[] memory b)
     return b;
 }
 
-//decompress a polynomial starting at offset byte of buf
-// OPTIMIZATION: unchecked for bounded arithmetic
+/// @notice Decompresses a polynomial from byte buffer using 14-bit encoding
+/// @dev Extracts 512 coefficients encoded as 14-bit values from a byte stream
+/// @dev Each coefficient must be < q=12289, otherwise the function reverts
+/// @dev Used for decompressing Falcon public keys in NIST format
+/// @param buf Byte buffer containing compressed polynomial data
+/// @param offset Starting position in buffer (typically 1 to skip header byte 0x09)
+/// @return Decompressed polynomial as array of 512 uint256 coefficients
 function _ZKNOX_NTT_Decompress(bytes memory buf, uint256 offset) pure returns (uint256[] memory) {
     uint256[] memory x = new uint256[](512);
     uint32 acc = 0;
