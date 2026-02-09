@@ -31,9 +31,9 @@ The repository implements several tweaked version of FALCON, optimized for diffe
   <td>A  recovery version, compatible with FALCON SOLIDITY XOF</td>
   <td> OK </td>
   </tr>
-  <td>FALCONRIP</td>
+  <td>FALCONEVM</td>
   <td>ASANSO </td>
-  <td>FALCON RIP draft by [ASANSO](https://github.com/asanso/RIPs/blob/master/RIPS/rip-falcon.md) </td>
+  <td>FALCON EVM draft by [ASANSO](https://github.com/asanso/RIPs/blob/master/RIPS/rip-falcon.md) </td>
   <td> OK </td>
   </tr>
   <td>EPERVIER</td>
@@ -62,7 +62,7 @@ Those function being non standard, the  code provided by authors is the specific
     <td> N/A </td>
   </tr>
    </tr>
-    <td> FALCONRIP </td>
+    <td> FALCONEVM </td>
     <td> Keccak-CTR </td>
     <td> N/A </td>
   </tr>

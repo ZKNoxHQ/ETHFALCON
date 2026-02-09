@@ -1,51 +1,25 @@
-/**
- *
- */
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN        NNNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                         ..../&@&#.       .###%@@@#, ..
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN:::::::N       N::::::N   OO:::::::::OO   X:::::X       X:::::X                      ...(@@* .... .           &#//%@@&,.
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::::N      N::::::N OO:::::::::::::OO X:::::X       X:::::X                    ..*@@.........              .@#%%(%&@&..
-/*Z:::ZZZZZZZZ:::::Z K:::::::K   K::::::KN:::::::::N     N::::::NO:::::::OOO:::::::OX::::::X     X::::::X                   .*@( ........ .  .&@@@@.      .@%%%%%#&@@.
-/*ZZZZZ     Z:::::Z  KK::::::K  K:::::KKKN::::::::::N    N::::::NO::::::O   O::::::OXXX:::::X   X::::::XX                ...&@ ......... .  &.     .@      /@%%%%%%&@@#
-/*        Z:::::Z      K:::::K K:::::K   N:::::::::::N   N::::::NO:::::O     O:::::O   X:::::X X:::::X                   ..@( .......... .  &.     ,&      /@%%%%&&&&@@@.
-/*       Z:::::Z       K::::::K:::::K    N:::::::N::::N  N::::::NO:::::O     O:::::O    X:::::X:::::X                   ..&% ...........     .@%(#@#      ,@%%%%&&&&&@@@%.
-/*      Z:::::Z        K:::::::::::K     N::::::N N::::N N::::::NO:::::O     O:::::O     X:::::::::X                   ..,@ ............                 *@%%%&%&&&&&&@@@.
-/*     Z:::::Z         K:::::::::::K     N::::::N  N::::N:::::::NO:::::O     O:::::O     X:::::::::X                  ..(@ .............             ,#@&&&&&&&&&&&&@@@@*
-/*    Z:::::Z          K::::::K:::::K    N::::::N   N:::::::::::NO:::::O     O:::::O    X:::::X:::::X                   .*@..............  . ..,(%&@@&&&&&&&&&&&&&&&&@@@@,
-/*   Z:::::Z           K:::::K K:::::K   N::::::N    N::::::::::NO:::::O     O:::::O   X:::::X X:::::X                 ...&#............. *@@&&&&&&&&&&&&&&&&&&&&@@&@@@@&
-/*ZZZ:::::Z     ZZZZZKK::::::K  K:::::KKKN::::::N     N:::::::::NO::::::O   O::::::OXXX:::::X   X::::::XX               ...@/.......... *@@@@. ,@@.  &@&&&&&&@@@@@@@@@@@.
-/*Z::::::ZZZZZZZZ:::ZK:::::::K   K::::::KN::::::N      N::::::::NO:::::::OOO:::::::OX::::::X     X::::::X               ....&#..........@@@, *@@&&&@% .@@@@@@@@@@@@@@@&
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N       N:::::::N OO:::::::::::::OO X:::::X       X:::::X                ....*@.,......,@@@...@@@@@@&..%@@@@@@@@@@@@@/
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N        N::::::N   OO:::::::::OO   X:::::X       X:::::X                   ...*@,,.....%@@@,.........%@@@@@@@@@@@@(
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN         NNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                      ...&@,....*@@@@@ ..,@@@@@@@@@@@@@&.
-/*                                                                                                                                   ....,(&@@&..,,,/@&#*. .
-/*                                                                                                                                    ......(&.,.,,/&@,.
-/*                                                                                                                                      .....,%*.,*@%
-/*                                                                                                                                    .#@@@&(&@*,,*@@%,..
-/*                                                                                                                                    .##,,,**$.,,*@@@@@%.
-/*                                                                                                                                     *(%%&&@(,,**@@@@@&
-/*                                                                                                                                      . .  .#@((@@(*,**
-/*                                                                                                                                             . (*. .
-/*                                                                                                                                              .*/
-///* Copyright (C) 2025 - Renaud Dubois, Simon Masson - This file is part of ZKNOX project
-///* License: This software is licensed under MIT License
-///* This Code may be reused including this header, license and copyright notice.
-///* See LICENSE file at the root folder of the project.
-///* FILE: ZKNOX_HashToPoint.sol
-///* Description: Compute HashToPoint (three versions: NIST, RIP and TETRATION)
-/**
- *
- */
+// Copyright (C) 2026 - ZKNOX
+// License: This software is licensed under MIT License
+// This Code may be reused including this header, license and copyright notice.
+// FILE: ZKNOX_HashToPoint.sol
+// Description: Hash-to-point functions for Falcon signature verification
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_shake.sol";
-//import {Test, console} from "forge-std/Test.sol";
-//import "./ZKNOX_display.sol";
 
+/// @dev Mask for extracting 2 bytes (16 bits) from uint256
 uint256 constant MASK_2BYTES = uint256(0xFFFF);
 
-function hashToPointRIP(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory output) {
+/// @notice Hash message to a polynomial point using Keccak256-based PRNG optimized for EVM efficiency
+/// @dev Uses Keccak256 as XOF instead of SHAKE256 for gas cost reduction
+/// @dev Samples 16-bit values from Keccak256 output and accepts those < kq=61445, reducing to mod q=12289
+/// @dev This is NOT NIST-compliant but provides significant gas savings for EVM execution
+/// @param salt 40-byte salt value for domain separation
+/// @param msgHash 32-byte message hash
+/// @return output Array of 512 coefficients in Z_q representing the hash-to-point result
+function hashToPointEVM(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory output) {
     output = new uint256[](n);
 
     bytes32 state;
@@ -77,7 +51,10 @@ function hashToPointRIP(bytes memory salt, bytes memory msgHash) pure returns (u
     }
 }
 
-// OPTIMIZATION: Assembly implementation instead of Solidity loop
+/// @notice Splits a bytes32 value into 16 uint16 values
+/// @dev Optimized assembly implementation for extracting 16-bit chunks from a 32-byte value
+/// @param x bytes32 value to split
+/// @return res Array of 16 uint16 values extracted from x (big-endian order)
 function splitToHex(bytes32 x) pure returns (uint16[16] memory res) {
     // splits a byte32 into hex
     assembly ("memory-safe") {
@@ -90,7 +67,12 @@ function splitToHex(bytes32 x) pure returns (uint16[16] memory res) {
     }
 }
 
-// OPTIMIZATION: unchecked for bounded loop counters
+/// @notice Hash message to polynomial point using NIST-compliant SHAKE256 XOF
+/// @dev Implements NIST FIPS 205 hash-to-point using SHAKE256 as the extendable output function
+/// @dev Samples 16-bit values and accepts those < kq=61445, reducing mod q=12289
+/// @param salt 40-byte salt value for domain separation (note: salt and msgHash order swapped vs EVM version)
+/// @param msgHash 32-byte message hash
+/// @return Array of 512 coefficients in Z_q representing the hash-to-point result
 function hashToPointNIST(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory) {
     // SALT AND MSG ARE SWAPPED!
     uint256[] memory hashed = new uint256[](512);
@@ -120,9 +102,13 @@ function hashToPointNIST(bytes memory salt, bytes memory msgHash) pure returns (
     return hashed;
 }
 
-//Use for Poc only, as this XOF doesn't respect separation domain for input and output of internal state
-//CVETH-2025-080203
-// OPTIMIZATION: unchecked for bounded loop counters
+/// @notice Hash message to polynomial point using iterated Keccak256 (TETRATION mode)
+/// @dev This is a PROOF-OF-CONCEPT ONLY and should NOT be used in production
+/// @dev Does NOT respect domain separation between input and output of internal state (CVETH-2025-080203)
+/// @dev Vulnerability: XOF doesn't properly separate absorption from squeezing phases
+/// @param salt Salt value
+/// @param msgHash Message hash
+/// @return Array of 512 coefficients in Z_q
 function hashToPointTETRATION(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory) {
     uint256[] memory hashed = new uint256[](512);
     uint256 i = 0;

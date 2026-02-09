@@ -45,16 +45,8 @@ generate_test_vectors:
 	$(PYTHON) -m generate_falcon_test_vectors -v
 	$(PYTHON) -m generate_epervier_test_vectors -v
 	$(PYTHON) -m generate_hashtopoint_test_vectors -v
-	$(PYTHON) -m generate_delegate -v
-	$(PYTHON) -m generate_experimental_falcon_recovery_shorter_zknox_test_vectors -v
-	$(PYTHON) -m generate_deprecated_falcon_test_vectors -v
-	$(PYTHON) -m generate_deprecated_falcon_recovery_test_vectors -v
-	$(PYTHON) -m generate_deprecated_falcon_epervier_test_vectors -v
 	$(PYTHON) -m generate_falcon_core_test_vectors -v
 	forge fmt
-
-generate_hash_test_vectors:
-	$(PYTHON) -m generate_hashtopoint_test_vectors -v
 	forge fmt
 
 profile:

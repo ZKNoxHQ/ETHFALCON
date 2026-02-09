@@ -3,7 +3,6 @@ pragma solidity ^0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon_encodings.sol";
 import "../src/ZKNOX_falcon.sol";
-import "../src/ZKNOX_falcon_deploy.sol";
 import "../src/ZKNOX_display.sol";
 
 contract FalconKATS_Test is Test {

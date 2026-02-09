@@ -1,47 +1,19 @@
-/**
- *
- */
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN        NNNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                         ..../&@&#.       .###%@@@#, ..
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN:::::::N       N::::::N   OO:::::::::OO   X:::::X       X:::::X                      ...(@@* .... .           &#//%@@&,.
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::::N      N::::::N OO:::::::::::::OO X:::::X       X:::::X                    ..*@@.........              .@#%%(%&@&..
-/*Z:::ZZZZZZZZ:::::Z K:::::::K   K::::::KN:::::::::N     N::::::NO:::::::OOO:::::::OX::::::X     X::::::X                   .*@( ........ .  .&@@@@.      .@%%%%%#&@@.
-/*ZZZZZ     Z:::::Z  KK::::::K  K:::::KKKN::::::::::N    N::::::NO::::::O   O::::::OXXX:::::X   X::::::XX                ...&@ ......... .  &.     .@      /@%%%%%%&@@#
-/*        Z:::::Z      K:::::K K:::::K   N:::::::::::N   N::::::NO:::::O     O:::::O   X:::::X X:::::X                   ..@( .......... .  &.     ,&      /@%%%%&&&&@@@.
-/*       Z:::::Z       K::::::K:::::K    N:::::::N::::N  N::::::NO:::::O     O:::::O    X:::::X:::::X                   ..&% ...........     .@%(#@#      ,@%%%%&&&&&@@@%.
-/*      Z:::::Z        K:::::::::::K     N::::::N N::::N N::::::NO:::::O     O:::::O     X:::::::::X                   ..,@ ............                 *@%%%&%&&&&&&@@@.
-/*     Z:::::Z         K:::::::::::K     N::::::N  N::::N:::::::NO:::::O     O:::::O     X:::::::::X                  ..(@ .............             ,#@&&&&&&&&&&&&@@@@*
-/*    Z:::::Z          K::::::K:::::K    N::::::N   N:::::::::::NO:::::O     O:::::O    X:::::X:::::X                   .*@..............  . ..,(%&@@&&&&&&&&&&&&&&&&@@@@,
-/*   Z:::::Z           K:::::K K:::::K   N::::::N    N::::::::::NO:::::O     O:::::O   X:::::X X:::::X                 ...&#............. *@@&&&&&&&&&&&&&&&&&&&&@@&@@@@&
-/*ZZZ:::::Z     ZZZZZKK::::::K  K:::::KKKN::::::N     N:::::::::NO::::::O   O::::::OXXX:::::X   X::::::XX               ...@/.......... *@@@@. ,@@.  &@&&&&&&@@@@@@@@@@@.
-/*Z::::::ZZZZZZZZ:::ZK:::::::K   K::::::KN::::::N      N::::::::NO:::::::OOO:::::::OX::::::X     X::::::X               ....&#..........@@@, *@@&&&@% .@@@@@@@@@@@@@@@&
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N       N:::::::N OO:::::::::::::OO X:::::X       X:::::X                ....*@.,......,@@@...@@@@@@&..%@@@@@@@@@@@@@/
-/*Z:::::::::::::::::ZK:::::::K    K:::::KN::::::N        N::::::N   OO:::::::::OO   X:::::X       X:::::X                   ...*@,,.....%@@@,.........%@@@@@@@@@@@@(
-/*ZZZZZZZZZZZZZZZZZZZKKKKKKKKK    KKKKKKKNNNNNNNN         NNNNNNN     OOOOOOOOO     XXXXXXX       XXXXXXX                      ...&@,....*@@@@@ ..,@@@@@@@@@@@@@&.
-/*                                                                                                                                   ....,(&@@&..,,,/@&#*. .
-/*                                                                                                                                    ......(&.,.,,/&@,.
-/*                                                                                                                                      .....,%*.,*@%
-/*                                                                                                                                    .#@@@&(&@*,,*@@%,..
-/*                                                                                                                                    .##,,,**$.,,*@@@@@%.
-/*                                                                                                                                     *(%%&&@(,,**@@@@@&
-/*                                                                                                                                      . .  .#@((@@(*,**
-/*                                                                                                                                             . (*. .
-/*                                                                                                                                              .*/
-///* Copyright (C) 2025 - Renaud Dubois, Simon Masson - This file is part of ZKNOX project
-///* License: This software is licensed under MIT License
-///* This Code may be reused including this header, license and copyright notice.
-///* See LICENSE file at the root folder of the project.
-///* FILE: ZKNOX_falcon_core.sol
-///* Description: verify falcon core component
-/**
- *
- */
+// Copyright (C) 2026 - ZKNOX
+// License: This software is licensed under MIT License
+// This Code may be reused including this header, license and copyright notice.
+// FILE: ZKNOX_falcon_core.sol
+// Description: Core Falcon-512 signature verification algorithm
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_NTT_falcon.sol";
 
-// OPTIMIZATION: Assembly loop with early exit - avoids loop overhead
+/// @notice Validates that all coefficients in a polynomial are within the field modulus q
+/// @dev Checks each coefficient < q=12289, early exit on first violation for gas efficiency
+/// @param polynomial Input polynomial (compacted or expanded format depending on is_compact flag)
+/// @param is_compact If true, polynomial is in compacted format (32 words); if false, expanded (512 coefficients)
+/// @return true if all coefficients are valid (< q), false otherwise
 function falcon_checkPolynomialRange(uint256[] memory polynomial, bool is_compact) pure returns (bool) {
     uint256[] memory a;
     if (is_compact == false) {
@@ -65,6 +37,16 @@ function falcon_checkPolynomialRange(uint256[] memory polynomial, bool is_compac
     return result;
 }
 
+/// @notice Normalizes signature components and verifies L2 norm bound
+/// @dev Core of Falcon verification algorithm:
+///      1. Computes s1 = h - s1 (mod q) where h is hash-to-point result
+///      2. Normalizes both s1 and s2 to centered representatives (-q/2, q/2]
+///      3. Computes squared L2 norm: ||s1||² + ||s2||²
+///      4. Verifies norm² < sigBound = 34034726
+/// @param s1 First signature component (will be overwritten with h - s1)
+/// @param s2 Second signature component in compacted format (32 words)
+/// @param hashed Hash-to-point result (512 coefficients)
+/// @return result true if signature norm is valid, false otherwise
 function falcon_normalize(
     uint256[] memory s1,
     uint256[] memory s2,
@@ -109,12 +91,15 @@ function falcon_normalize(
     return result;
 }
 
-/// @notice Compute the core falcon verification function, compacted input
-/// @param s2 second part of the signature in Compacted representation (see IO part of README for encodings specification)
-/// @param ntth public key in the ntt domain, compacted 16  coefficients of 16 bits per word
-/// @param hashed result of hashToPoint(signature.salt, msgs, q, n);
-/// @return result boolean result of the verification
-
+/// @notice Core Falcon-512 verification algorithm with compacted input
+/// @dev Implements the Falcon signature verification equation:
+///      1. Computes s1 = h - h·s2 (in NTT domain) where h is the public key
+///      2. Verifies ||s1||² + ||s2||² < sigBound
+/// @dev Uses compacted polynomial representation for gas efficiency
+/// @param s2 Second signature component (32 uint256 words, compacted)
+/// @param ntth Public key in NTT domain (32 uint256 words, compacted)
+/// @param hashed Hash-to-point result (512 coefficients)
+/// @return result true if signature is valid, false otherwise
 function falcon_core(
     uint256[] memory s2,
     uint256[] memory ntth, // public key, compacted 16  coefficients of 16 bits per word

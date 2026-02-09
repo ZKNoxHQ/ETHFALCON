@@ -39,7 +39,6 @@ pragma solidity ^0.8.25;
 import {{Test, console}} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon_utils.sol";
 import "../src/ZKNOX_{}falcon.sol";
-import "../src/ZKNOX_falcon_deploy.sol";
 
 contract ZKNOX_FalconTest is Test {{
     ZKNOX_{}falcon falcon = new ZKNOX_{}falcon();
@@ -50,10 +49,10 @@ for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST'), (Blake2sPRNG, 'ZK
     if hash_type == 'ZK':
         # file with .t instead of .t.sol for now.
         file = open(
-            "../test/ZKNOX_zkfalcon.t", 'w')
+            "../test/zkfalcon.t", 'w')
     else:
         file = open(
-            "../test/ZKNOX_{}falcon.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
+            "../test/{}falcon.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
 
     if hash_type == 'RIP':
         file.write(header('eth'))

@@ -5,7 +5,7 @@ This repo provides:
 
 * on-chain [contracts](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/src) for verification
 * [python](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/pythonref) signers and verification for testing (offchain and on-chain wrapping cast).
-
+* [c](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/falcon/nistfalcon) signers and verification for testing (based on the NIST reference implementation, with added functionalities).
 
 **This is an experimental work, not audited: DO NOT USE IN PRODUCTION, LOSS OF FUND WILL OCCUR.**
 
@@ -20,7 +20,7 @@ The repo implements several versions of FALCON:
 * EPERVIER is a 'FALCON with recovery' EVM version, enabling to mimic the ecrecover functionning (recover address from signature).
 
 
-Detailed specification is [here](./doc/specification.md). 
+Detailed specification is provided in the [EIP 8052](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-8052.md) and [here](./doc/specification.md). 
 
 
 ## I/O Description
@@ -85,16 +85,20 @@ The repo contains a solidity verifier and a python signer.
 
 ## BENCHMARKS
 
+The following benchmarks can be reproduced using 
+```bash
+make bench
+```
 
 | Function                   | Description               | gas cost | Tests Status |
 |------------------------|---------------------|---------------------|---------------------|
-| ZKNOX_falcon.verify       | NIST       | 7M | :white_check_mark:|
-| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.8 M | :white_check_mark:|
-| ZKNOX_epervier.verify       | Recover EVM friendly      | 1.9 M | :white_check_mark:|
+| ZKNOX_falcon.verify       | NIST       | 3.9M | :white_check_mark:|
+| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.5 M | :white_check_mark:|
+| ZKNOX_epervier.verify       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
 
 
 More benchmark details for both solidity code and python  available [here](./doc/benchmarks.md).
-Those are measured on compacted polynomial representation. For decompressed/kats, add 600K to benchmarks.
+Those are measured on compacted polynomial representation. For decompressed/kats, add 900K to benchmarks.
 
 ## EXAMPLE
 
@@ -120,24 +124,14 @@ https://github.com/leanEthereum/leanMultisig/tree/main/crates/leanVm
 
 ## DEPLOYMENTS
 
-Current deployment addresses:
-
-| Function                   | Description               |address | testnets |
-|------------------------|---------------------|---------------------|---------------------|
-| EPERVIER     | Epervier implementation     | 0x5ab1d6db02f48bad63cbef5d51c534A76aEB824B | [Optimism (Sepolia)](https://sepolia-optimism.etherscan.io/address/0x5ab1d6db02f48bad63cbef5d51c534A76aEB824B) |
-| ETHFALCON     | ETHFalcon implementation      | 0x2F27b854B719921f03f30d1e5d0aE8e0aE7f96cA | [Optimism (Sepolia)](https://sepolia-optimism.etherscan.io/address/0x2F27b854B719921f03f30d1e5d0aE8e0aE7f96cA) |
-| FALCON     | Falcon NIST Legacy implementation      | 0xD088Ede58BD1736477d66d114D842bDE279A41Fa | [Optimism (Sepolia)](https://sepolia-optimism.etherscan.io/address/0xD088Ede58BD1736477d66d114D842bDE279A41Fa)|
-
-
-Warning: be sure to download the version linked to the proper commit. The library has currently some API's changes and latest sources are not deployed yet.
-All deployments with change notices are [here](./doc/deployments.md).
+Contract deployments are provided in [kohaku project](https://github.com/ethereum/kohaku/blob/master/packages/pq-account/deployments/deployments.json).
 
 
 ## 7702 DELEGATION
 
 Before Native Account Abstraction is pushed, a demonstration of how to integrate FALCON in a 7702 delegation is provided in ZKNOX_IVerifierDelegate_7702.t.sol.
 
-
+One of Kohaku goals is to integrate these contracts in a 4337 account.
 
 ## CONCLUSION
 

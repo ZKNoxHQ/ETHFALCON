@@ -33,7 +33,6 @@ import {{Test, console}} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon_utils.sol";
 import "../src/ZKNOX_{}falcon.sol";
 import "../src/ZKNOX_falcon_core.sol";
-import "../src/ZKNOX_falcon_deploy.sol";
 
 contract ZKNOX_FalconTest is Test {{
     ZKNOX_{}falcon falcon;
@@ -49,7 +48,7 @@ contract ZKNOX_FalconTest is Test {{
 
 for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
     file = open(
-        "../test/ZKNOX_{}falcon_core.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
+        "../test/{}falcon_core.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
 
     file.write(header('eth' if hash_type == 'RIP' else ''))
 
