@@ -49,7 +49,7 @@ contract ZKNOX_FalconTest is Test {{
 
 for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
     file = open(
-        "../test/ZKNOX_{}falcon_core.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
+        "../test/{}falcon_core.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
 
     file.write(header('eth' if hash_type == 'RIP' else ''))
 

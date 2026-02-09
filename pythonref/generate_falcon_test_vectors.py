@@ -50,10 +50,10 @@ for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST'), (Blake2sPRNG, 'ZK
     if hash_type == 'ZK':
         # file with .t instead of .t.sol for now.
         file = open(
-            "../test/ZKNOX_zkfalcon.t", 'w')
+            "../test/zkfalcon.t", 'w')
     else:
         file = open(
-            "../test/ZKNOX_{}falcon.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
+            "../test/{}falcon.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
 
     if hash_type == 'RIP':
         file.write(header('eth'))

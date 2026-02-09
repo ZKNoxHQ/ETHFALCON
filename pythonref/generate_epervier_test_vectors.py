@@ -47,7 +47,7 @@ contract ZKNOX_epervierTest is Test {{
 
 for (XOF, hash_type) in [(KeccakPRNG, 'RIP'), (SHAKE, 'NIST')]:
     file = open(
-        "../test/ZKNOX_{}epervier.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
+        "../test/{}epervier.t.sol".format('eth' if hash_type == 'RIP' else ''), 'w')
 
     file.write(header('eth' if hash_type == 'RIP' else ''))
 

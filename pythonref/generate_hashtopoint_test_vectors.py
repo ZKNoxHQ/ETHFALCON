@@ -31,9 +31,9 @@ for XOF in [KeccakPRNG, SHAKE, Blake2sPRNG]:
 
     if hash_type == "ZK":
         # we don't generate a sol file for now as we do not have Blake2s in solidty.
-        file = open("../test/ZKNOXHashToPointZKVectors.t", 'w')
+        file = open("../test/HashToPointZKVectors.t", 'w')
     else:
-        file = open("../test/ZKNOXHashToPoint" +
+        file = open("../test/HashToPoint" +
                     hash_type + "Vectors.t.sol", 'w')
 
     header = """
