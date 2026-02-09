@@ -56,10 +56,8 @@ function rol64(uint256 x, uint256 s) pure returns (uint64) {
 // OPTIMIZATION: f1600 with unrolled Chi loop - eliminates addmod calls
 function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
     // forgefmt: disable-next-line
-    uint256[24] memory _keccakPi = [uint256(10), 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1];
-    // forgefmt: disable-next-line
-    uint64[24] memory _keccakRc = [uint64(0x0000000000000001), 0x0000000000008082,0x800000000000808a,0x8000000080008000,0x000000000000808b, 0x0000000080000001,0x8000000080008081, 0x8000000000008009,0x000000000000008a, 0x0000000000000088,0x0000000080008009, 0x000000008000000a,0x000000008000808b, 0x800000000000008b,0x8000000000008089, 0x8000000000008003,0x8000000000008002, 0x8000000000000080,0x000000000000800a, 0x800000008000000a,0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008];
-    // forgefmt: disable-next-line
+    uint256[24] memory _keccakPi = [uint256(10), 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1];// forgefmt: disable-next-line
+    uint64[24] memory _keccakRc = [uint64(0x0000000000000001), 0x0000000000008082,0x800000000000808a,0x8000000080008000,0x000000000000808b, 0x0000000080000001,0x8000000080008081, 0x8000000000008009,0x000000000000008a, 0x0000000000000088,0x0000000080008009, 0x000000008000000a,0x000000008000808b, 0x800000000000008b,0x8000000000008089, 0x8000000000008003,0x8000000000008002, 0x8000000000000080,0x000000000000800a, 0x800000008000000a,0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008];// forgefmt: disable-next-line
     uint256[24] memory _keccakRho = [uint256(1), 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44];
 
     // Use scratch memory for bc - allocated once
@@ -69,7 +67,7 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
         for { let i := 0 } lt(i, 24) { i := add(i, 1) } {
             let t
             let offset_X
-            
+
             // ==================== THETA STEP 1 ====================
             // Same as original but slightly optimized
             for { offset_X := 0 } lt(offset_X, 160) { offset_X := add(offset_X, 32) } {
@@ -133,10 +131,10 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 mstore(add(state, 608), xor(mload(add(state, 608)), d))
                 mstore(add(state, 768), xor(mload(add(state, 768)), d))
             }
-            
+
             // ==================== RHO + PI ====================
             t := mload(add(state, 32))
-            
+
             for { let x := 0 } lt(x, 768) { x := add(x, 32) } {
                 let keccakpix := mload(add(_keccakPi, x))
                 let kpix := add(state, shl(5, keccakpix))
@@ -149,7 +147,7 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
             // ==================== CHI ====================
             // Unrolled y loop, eliminates addmod for x+1 and x+2
             let rc := mload(add(_keccakRc, shl(5, i)))
-            
+
             // y=0, offset=0
             {
                 let c0 := mload(state)
@@ -164,7 +162,7 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 mstore(add(state, 128), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
             }
             mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
-            
+
             // y=1, offset=160
             {
                 let c0 := mload(add(state, 160))
@@ -179,7 +177,7 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 mstore(add(state, 288), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
             }
             mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
-            
+
             // y=2, offset=320
             {
                 let c0 := mload(add(state, 320))
@@ -194,7 +192,7 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 mstore(add(state, 448), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
             }
             mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
-            
+
             // y=3, offset=480
             {
                 let c0 := mload(add(state, 480))
@@ -209,7 +207,7 @@ function f1600(uint64[25] memory state) pure returns (uint64[25] memory) {
                 mstore(add(state, 608), xor(c4, and(xor(c0, 0xffffffffffffffff), c1)))
             }
             mstore(state, and(xor(mload(state), rc), 0xffffffffffffffff))
-            
+
             // y=4, offset=640
             {
                 let c0 := mload(add(state, 640))
@@ -236,7 +234,7 @@ function shakeAbsorb(uint256 i, uint8[200] memory buf, uint64[25] memory state, 
 {
     uint256 todo = input.length;
     uint256 index = 0;
-    
+
     unchecked {
         while (todo > 0) {
             uint256 cando = _RATE - i;
