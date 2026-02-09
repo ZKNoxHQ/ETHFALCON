@@ -4,7 +4,6 @@ pragma solidity ^0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon_encodings.sol";
 import "../src/ZKNOX_ethfalcon.sol";
-import "../src/ZKNOX_falcon_deploy.sol";
 
 /// @title ZKNOX ETHFalcon KAT File Test
 /// @notice Tests ZKNOX_ethfalcon against NIST KAT (Known Answer Test) files
