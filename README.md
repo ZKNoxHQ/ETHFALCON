@@ -5,7 +5,7 @@ This repo provides:
 
 * on-chain [contracts](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/src) for verification
 * [python](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/pythonref) signers and verification for testing (offchain and on-chain wrapping cast).
-
+* [c](https://github.com/ZKNoxHQ/ETHFALCON/tree/main/falcon/nistfalcon) signers and verification for testing (based on the NIST reference implementation, with added functionalities).
 
 **This is an experimental work, not audited: DO NOT USE IN PRODUCTION, LOSS OF FUND WILL OCCUR.**
 
@@ -20,7 +20,7 @@ The repo implements several versions of FALCON:
 * EPERVIER is a 'FALCON with recovery' EVM version, enabling to mimic the ecrecover functionning (recover address from signature).
 
 
-Detailed specification is [here](./doc/specification.md). 
+Detailed specification is provided in the [EIP 8052](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-8052.md) and [here](./doc/specification.md). 
 
 
 ## I/O Description
@@ -85,16 +85,20 @@ The repo contains a solidity verifier and a python signer.
 
 ## BENCHMARKS
 
+The following benchmarks can be reproduced using 
+```bash
+make bench
+```
 
 | Function                   | Description               | gas cost | Tests Status |
 |------------------------|---------------------|---------------------|---------------------|
-| ZKNOX_falcon.verify       | NIST       | 7M | :white_check_mark:|
-| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.8 M | :white_check_mark:|
-| ZKNOX_epervier.verify       | Recover EVM friendly      | 1.9 M | :white_check_mark:|
+| ZKNOX_falcon.verify       | NIST       | 3.9M | :white_check_mark:|
+| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.5 M | :white_check_mark:|
+| ZKNOX_epervier.verify       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
 
 
 More benchmark details for both solidity code and python  available [here](./doc/benchmarks.md).
-Those are measured on compacted polynomial representation. For decompressed/kats, add 600K to benchmarks.
+Those are measured on compacted polynomial representation. For decompressed/kats, add 900K to benchmarks.
 
 ## EXAMPLE
 
