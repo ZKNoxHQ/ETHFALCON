@@ -47,9 +47,6 @@ generate_test_vectors:
 	$(PYTHON) -m generate_hashtopoint_test_vectors -v
 	$(PYTHON) -m generate_falcon_core_test_vectors -v
 	forge fmt
-
-generate_hash_test_vectors:
-	$(PYTHON) -m generate_hashtopoint_test_vectors -v
 	forge fmt
 
 profile:
