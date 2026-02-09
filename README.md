@@ -124,24 +124,14 @@ https://github.com/leanEthereum/leanMultisig/tree/main/crates/leanVm
 
 ## DEPLOYMENTS
 
-Current deployment addresses:
-
-| Function                   | Description               |address | testnets |
-|------------------------|---------------------|---------------------|---------------------|
-| EPERVIER     | Epervier implementation     | 0x5ab1d6db02f48bad63cbef5d51c534A76aEB824B | [Optimism (Sepolia)](https://sepolia-optimism.etherscan.io/address/0x5ab1d6db02f48bad63cbef5d51c534A76aEB824B) |
-| ETHFALCON     | ETHFalcon implementation      | 0x2F27b854B719921f03f30d1e5d0aE8e0aE7f96cA | [Optimism (Sepolia)](https://sepolia-optimism.etherscan.io/address/0x2F27b854B719921f03f30d1e5d0aE8e0aE7f96cA) |
-| FALCON     | Falcon NIST Legacy implementation      | 0xD088Ede58BD1736477d66d114D842bDE279A41Fa | [Optimism (Sepolia)](https://sepolia-optimism.etherscan.io/address/0xD088Ede58BD1736477d66d114D842bDE279A41Fa)|
-
-
-Warning: be sure to download the version linked to the proper commit. The library has currently some API's changes and latest sources are not deployed yet.
-All deployments with change notices are [here](./doc/deployments.md).
+Contract deployments are provided in [kohaku project](https://github.com/ethereum/kohaku/blob/master/packages/pq-account/deployments/deployments.json).
 
 
 ## 7702 DELEGATION
 
 Before Native Account Abstraction is pushed, a demonstration of how to integrate FALCON in a 7702 delegation is provided in ZKNOX_IVerifierDelegate_7702.t.sol.
 
-
+One of Kohaku goals is to integrate these contracts in a 4337 account.
 
 ## CONCLUSION
 
