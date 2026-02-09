@@ -228,3 +228,4 @@ contract Benchmark is Test {
         assertEq(pk, recovered_pk);
     }
 }
+
