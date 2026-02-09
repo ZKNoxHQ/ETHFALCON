@@ -53,4 +53,4 @@ test_onchain:
 # BENCH
 
 bench:
-	forge test -j$(CORES) test/ZKNOXBenchmarks.t.sol -vv | grep -A1 "Logs" | grep -v "Logs" | grep -v "\-\-"
+	forge test -j$(CORES) test/Benchmarks.t.sol -vv | grep -A1 "Logs" | grep -v "Logs" | grep -v "\-\-"
