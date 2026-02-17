@@ -8,6 +8,7 @@ from polyntt.ntt_iterative import NTTIterative
 from polyntt.poly import Poly
 from common import sqnorm, q
 from samplerz import samplerz
+from mkgauss import poly_small_mkgauss
 from os import urandom
 
 
@@ -224,16 +225,19 @@ def gen_poly(n, ntt=NTTIterative, randombytes=urandom):
         f[i] = sum(f0[i * k + j] for j in range(k))
     return Poly(f, q, ntt=ntt)
 
-
-def ntru_gen(n, ntt=NTTIterative, randombytes=urandom):
+def ntru_gen(n, ntt=NTTIterative, randombytes=urandom, logn=None):
     """
     Implement the algorithm 5 (NTRUGen) of Falcon's documentation.
-    At the end of the function, polynomials f, g, F, G in Z[x]/(x ** n + 1)
-    are output, which verify f * G - g * F = q mod (x ** n + 1).
+    If logn is provided, use the C-reference-compatible Gaussian sampler.
     """
     while True:
-        f = gen_poly(n, randombytes=randombytes).coeffs
-        g = gen_poly(n, randombytes=randombytes).coeffs
+        if logn is not None:
+            f = poly_small_mkgauss(randombytes, n, logn)
+            g = poly_small_mkgauss(randombytes, n, logn)
+        else:
+            f = gen_poly(n, randombytes=randombytes).coeffs
+            g = gen_poly(n, randombytes=randombytes).coeffs
+
         if gs_norm(f, g, q) > (1.17 ** 2) * q:
             continue
         if ntt == NTTRecursive:
@@ -248,7 +252,5 @@ def ntru_gen(n, ntt=NTTIterative, randombytes=urandom):
             F = [int(coef) for coef in F]
             G = [int(coef) for coef in G]
             return f, g, F, G
-        # If the NTRU equation cannot be solved, a ValueError is raised
-        # In this case, we start again
         except ValueError:
             continue

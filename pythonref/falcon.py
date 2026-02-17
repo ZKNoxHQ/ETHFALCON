@@ -43,7 +43,7 @@ logn = {
 # Bytelength of the signing salt and header
 HEAD_LEN = 1
 SALT_LEN = 40
-SEED_LEN = 56
+SEED_LEN = 48
 
 
 # Parameter sets for Falcon:
@@ -239,7 +239,7 @@ class PublicKey:
         Create a PublicKey from the NIST-format version.
 
         Format:
-        - 1 byte header: 0x09
+        - 1 byte header: 0x09 or 0x0A (for falcon-1024)
         - 896 bytes: 512 coefficients, each 14 bits
 
         Returns:
@@ -257,7 +257,7 @@ class PublicKey:
         else:
             raise ValueError("Invalid Falcon public key header")
 
-        data = pk_bytes[1:]  # Remove header
+        data = pk_bytes[HEAD_LEN:]  # Remove header
 
         h = []
         acc = 0
@@ -409,11 +409,10 @@ class SecretKey:
             # If no seed is defined, use urandom as the pseudo-random source.
             z_fft = ffsampling_fft(t_fft, self.T_fft, self.sigmin, urandom)
         else:
-            # If a seed is defined, initialize a ChaCha20 PRG
-            # that is used to generate pseudo-randomness.
-            chacha_prng = ChaCha20(seed)
+            shake_prng = SHAKE.new(seed)
+            shake_prng.flip()
             z_fft = ffsampling_fft(t_fft, self.T_fft, self.sigmin,
-                                   chacha_prng.randombytes)
+                                   shake_prng.read)
 
         v0_fft = add_fft(mul_fft(z_fft[0], a), mul_fft(z_fft[1], c))
         v1_fft = add_fft(mul_fft(z_fft[0], b), mul_fft(z_fft[1], d))
@@ -425,6 +424,20 @@ class SecretKey:
         #     s[0] + s[1] * h = point
         s = [sub(point, v0), neg(v1)]
         return s
+    
+    def sample_preimage_with_prng(self, point, randombytes_func):
+        [[a, b], [c, d]] = self.B0_fft
+        point_fft = fft(point)
+        t0_fft = [(point_fft[i] * d[i]) / q for i in range(self.n)]
+        t1_fft = [(-point_fft[i] * b[i]) / q for i in range(self.n)]
+        t_fft = [t0_fft, t1_fft]
+        z_fft = ffsampling_fft(t_fft, self.T_fft, self.sigmin, randombytes_func)
+        v0_fft = add_fft(mul_fft(z_fft[0], a), mul_fft(z_fft[1], c))
+        v1_fft = add_fft(mul_fft(z_fft[0], b), mul_fft(z_fft[1], d))
+        v0 = [int(round(elt)) for elt in ifft(v0_fft)]
+        v1 = [int(round(elt)) for elt in ifft(v1_fft)]
+        s = [sub(point, v0), neg(v1)]
+        return s
 
     def sign(self, message, randombytes=urandom, xof=KeccakPRNG):
         """
@@ -432,19 +445,27 @@ class SecretKey:
         Optionally, one can select the source of (pseudo-)randomness used
         (default: urandom).
         """
-        int_header = 0x30 + logn[self.n]
+        int_header = 0x20 + logn[self.n]
         header = int_header.to_bytes(1, "little")
 
         salt = randombytes(SALT_LEN)
         hashed = self.hash_to_point(self.n, message, salt, xof=xof)
+
+        if randombytes != urandom:
+            seed = randombytes(SEED_LEN)
+            shake_prng = SHAKE.new(seed)
+            shake_prng.flip()
+        
         # We repeat the signing procedure until we find a signature that is
         # short enough (both the Euclidean norm and the bytelength)
         while (1):
-            if (randombytes == urandom):
+            if randombytes == urandom:
                 s = self.sample_preimage(hashed)
             else:
-                seed = randombytes(SEED_LEN)
-                s = self.sample_preimage(hashed, seed=seed)
+                chacha_seed = shake_prng.read(56)
+                chacha = ChaCha20(chacha_seed)
+                s = self.sample_preimage_with_prng(hashed, chacha.randombytes)
+
             norm_sign = sum(coef ** 2 for coef in s[0])
             norm_sign += sum(coef ** 2 for coef in s[1])
             # Check the Euclidean norm
