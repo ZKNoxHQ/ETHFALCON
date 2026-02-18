@@ -10,6 +10,9 @@
 // FALCON
 int crypto_sign_keypair(unsigned char *pk, unsigned char *sk);
 
+int crypto_sign_keypair_from_seed(unsigned char *pk, unsigned char *sk,
+								  const unsigned char *seed, size_t seedlen);
+
 int crypto_sign(unsigned char *sm, unsigned long long *smlen,
 				const unsigned char *m, unsigned long long mlen,
 				const unsigned char *sk);
@@ -20,6 +23,9 @@ int crypto_sign_open(unsigned char *m, unsigned long long *mlen,
 
 // ZKNOX FALCON
 int zknox_crypto_sign_keypair(unsigned char *pk, unsigned char *sk);
+
+int zknox_crypto_sign_keypair_from_seed(unsigned char *pk, unsigned char *sk,
+										const unsigned char *seed, size_t seedlen);
 
 int zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 					  const unsigned char *m, unsigned long long mlen,

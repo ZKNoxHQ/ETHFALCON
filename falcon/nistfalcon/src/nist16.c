@@ -48,6 +48,83 @@ int zknox_crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
 	inner_shake256_inject(&rng, seed, sizeof seed);
 	inner_shake256_flip(&rng);
 	Zf(keygen)(&rng, f, g, F, NULL, h, 9, tmp.b);
+	Zf(to_ntt)(h, 9);
+
+	/*
+	 * Encode private key.
+	 */
+	sk[0] = 0x50 + 9;
+	u = 1;
+	v = Zf(trim_i8_encode)(sk + u, CRYPTO_SECRETKEYBYTES - u,
+						   f, 9, Zf(max_fg_bits)[9]);
+	if (v == 0)
+	{
+		return -1;
+	}
+	u += v;
+	v = Zf(trim_i8_encode)(sk + u, CRYPTO_SECRETKEYBYTES - u,
+						   g, 9, Zf(max_fg_bits)[9]);
+	if (v == 0)
+	{
+		return -1;
+	}
+	u += v;
+	v = Zf(trim_i8_encode)(sk + u, CRYPTO_SECRETKEYBYTES - u,
+						   F, 9, Zf(max_FG_bits)[9]);
+	if (v == 0)
+	{
+		return -1;
+	}
+	u += v;
+	if (u != CRYPTO_SECRETKEYBYTES)
+	{
+		return -1;
+	}
+
+	/*
+	 * Encode public key.
+	 */
+	pk[0] = 0x00 + 9;
+	v = Zf(modq_encode16)(pk + 1, ZKNOX_CRYPTO_PUBLICKEYBYTES - 1, h, 9);
+
+	if (v != ZKNOX_CRYPTO_PUBLICKEYBYTES - 1)
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
+int zknox_crypto_sign_keypair_from_seed(unsigned char *pk, unsigned char *sk,
+										const unsigned char *seed, size_t seedlen)
+{
+	TEMPALLOC union
+	{
+		uint8_t b[FALCON_KEYGEN_TEMP_9];
+		uint64_t dummy_u64;
+		fpr dummy_fpr;
+	} tmp;
+	TEMPALLOC int8_t f[512], g[512], F[512];
+	TEMPALLOC uint16_t h[512];
+	TEMPALLOC inner_shake256_context rng;
+	size_t u, v;
+
+	/*
+	 * Seed must be at least 32 bytes.
+	 */
+	if (seedlen < 32)
+	{
+		return -1;
+	}
+
+	/*
+	 * Generate key pair from the provided seed.
+	 */
+	inner_shake256_init(&rng);
+	inner_shake256_inject(&rng, seed, seedlen);
+	inner_shake256_flip(&rng);
+	Zf(keygen)(&rng, f, g, F, NULL, h, 9, tmp.b);
+	Zf(to_ntt)(h, 9);
 
 	/*
 	 * Encode private key.
@@ -214,6 +291,16 @@ int zknox_crypto_sign(unsigned char *sm, unsigned long long *smlen,
 	return 0;
 }
 
+static void to_monty(uint16_t *h, unsigned logn)
+{
+	// 4091 = 2^16 mod 12289
+	size_t n = (size_t)1 << logn;
+	for (size_t i = 0; i < n; i++)
+	{
+		h[i] = (uint16_t)((uint32_t)h[i] * 4091u % 12289u);
+	}
+}
+
 int zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
 						   const unsigned char *sm, unsigned long long smlen,
 						   const unsigned char *pk)
@@ -245,7 +332,7 @@ int zknox_crypto_sign_open(unsigned char *m, unsigned long long *mlen,
 	{
 		return -1;
 	}
-	Zf(to_ntt_monty)(h, 9);
+	to_monty(h, 9);
 
 	/*
 	 * Find nonce, signature, message length.
