@@ -11,6 +11,7 @@ import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_falcon_core.sol";
 import "./ZKNOX_HashToPoint.sol";
 import {ISigVerifier} from "InterfaceVerifier/IVerifier.sol";
+import {IPKContract, PKContract} from "./ZKNOX_PKContract.sol";
 
 /// @title ZKNOX_falcon
 /// @notice A contract to verify FALCON signatures
@@ -32,8 +33,9 @@ contract ZKNOX_falcon is ISigVerifier {
         return true;
     }
 
-    function setKey(bytes memory pubkey) external pure returns (bytes memory) {
-        return pubkey;
+    function setKey(bytes memory pubkey) external returns (bytes memory) {
+        PKContract pkContract = new PKContract(pubkey);
+        return abi.encodePacked(address(pkContract));
     }
 
     /// @notice Compute the  falcon NIST verification function
@@ -77,13 +79,18 @@ contract ZKNOX_falcon is ISigVerifier {
     }
 
     function verify(bytes calldata _pubkey, bytes32 _digest, bytes calldata _sig) external view returns (bytes4) {
-        bytes memory pubkey = _pubkey;
+        address pkContractAddress;
+        assembly {
+            pkContractAddress := shr(96, calldataload(_pubkey.offset))
+        }
+
+        uint256[] memory ntth = IPKContract(pkContractAddress).getPublicKey();
+
         bytes memory digest = abi.encodePacked(_digest);
         bytes memory sig = _sig;
 
         uint256 saltPtr;
         uint256 s2Ptr;
-        uint256 ntthPtr;
 
         assembly {
             // === Salt ===
@@ -105,25 +112,19 @@ contract ZKNOX_falcon is ISigVerifier {
 
             let savedPtr := freePtr
             mstore(savedPtr, mload(sig))
-            mstore(add(savedPtr, 32), mload(pubkey))
-            mstore(add(savedPtr, 64), mload(s2LengthSlot))
-            mstore(0x40, add(savedPtr, 96))
+            mstore(add(savedPtr, 32), mload(s2LengthSlot))
+            mstore(0x40, add(savedPtr, 64))
 
             mstore(s2LengthSlot, div(sub(mload(sig), SALT_LEN), 32))
             s2Ptr := s2LengthSlot
-
-            // === ntth ===
-            mstore(pubkey, div(mload(pubkey), 32))
-            ntthPtr := pubkey
         }
 
-        bool result = this.verify(digest, _ptrToBytes(saltPtr), _ptrToUint256Array(s2Ptr), _ptrToUint256Array(ntthPtr));
+        bool result = this.verify(digest, _ptrToBytes(saltPtr), _ptrToUint256Array(s2Ptr), ntth);
 
         assembly {
-            let savedPtr := sub(mload(0x40), 96)
+            let savedPtr := sub(mload(0x40), 64)
             mstore(sig, mload(savedPtr))
-            mstore(pubkey, mload(add(savedPtr, 32)))
-            mstore(add(sig, SALT_LEN), mload(add(savedPtr, 64)))
+            mstore(add(sig, SALT_LEN), mload(add(savedPtr, 32)))
         }
 
         if (result) {
@@ -140,20 +141,4 @@ contract ZKNOX_falcon is ISigVerifier {
         assembly { result := ptr }
     }
 
-    //extract the ntt representation of the public key deployed at the _from address input
-    function GetPublicKey(address _from) external view returns (uint256[] memory Kpub) {
-        Kpub = new uint256[](32);
-
-        assembly {
-            let offset := Kpub
-
-            for { let i := 0 } gt(1024, i) { i := add(i, 32) } {
-                //read the 32 words
-                offset := add(offset, 32)
-
-                extcodecopy(_from, offset, i, 32) //psi_rev[m+i])
-            }
-        }
-        return Kpub;
-    }
 } //end of contract ZKNOX_falcon_compact
