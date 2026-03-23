@@ -11,7 +11,7 @@ import {ISigVerifier} from "InterfaceVerifier/IVerifier.sol";
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_falcon_core.sol";
 import "./ZKNOX_HashToPoint.sol";
-import {IPKContract, PKContract} from "./ZKNOX_PKContract.sol";
+import {SSTORE2} from "sstore2/SSTORE2.sol";
 
 /// @title ZKNOX_ethfalcon
 /// @notice A contract to verify ETHFALCON signatures
@@ -33,8 +33,8 @@ contract ZKNOX_ethfalcon is ISigVerifier {
     }
 
     function setKey(bytes memory pubkey) external returns (bytes memory) {
-        PKContract pkContract = new PKContract(pubkey);
-        return abi.encodePacked(address(pkContract));
+        address pointer = SSTORE2.write(pubkey);
+        return abi.encodePacked(pointer);
     }
 
     /// @notice Compute the  ethfalcon verification function
@@ -82,7 +82,7 @@ contract ZKNOX_ethfalcon is ISigVerifier {
             pkContractAddress := shr(96, calldataload(_pubkey.offset))
         }
 
-        uint256[] memory ntth = IPKContract(pkContractAddress).getPublicKey();
+        uint256[] memory ntth = abi.decode(SSTORE2.read(pkContractAddress), (uint256[]));
 
         bytes memory digest = abi.encodePacked(_digest);
         bytes memory sig = _sig;
