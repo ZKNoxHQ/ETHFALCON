@@ -12,6 +12,7 @@ install_signer:
 install_verifier:
 	foundryup
 	forge install ZKNOXHQ/InterfaceVerifier
+	forge install 0xsequence/sstore2
 
 # GENERATION OF TEST VECTORS
 
