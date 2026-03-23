@@ -140,5 +140,4 @@ contract ZKNOX_falcon is ISigVerifier {
     function _ptrToUint256Array(uint256 ptr) private pure returns (uint256[] memory result) {
         assembly { result := ptr }
     }
-
 } //end of contract ZKNOX_falcon_compact
