@@ -53,32 +53,38 @@ contract ZKNOX_NTT {
     address public o_psi_inv_rev; //external contract containing psi_inv_rev
     uint256 storage_q;
     uint256 storage_nm1modq; //n^-1 mod 12289
-    uint256 is_immutable; //"antifuse" variable
+    uint256 is_immutable; //"antifuse" variable: 1 = locked, 0 = updatable by owner
+    address public owner;
 
     uint256 constant mask16 = 0xffff;
-    uint256 constant chunk16Byword = 16; //number of 1§ bits chunks in a word of 256 bits
+    uint256 constant chunk16Byword = 16; //number of 16 bit chunks in a word of 256 bits
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "not owner");
+        _;
+    }
 
     constructor(address Apsi_rev, address Apsi_inrev, uint256 q, uint256 nm1modq) {
+        owner = msg.sender;
         storage_q = q; //prime field modulus
         storage_nm1modq = nm1modq; //n^-1 mod 12289, used in inverse NTT
 
         o_psirev = Apsi_rev;
         o_psi_inv_rev = Apsi_inrev;
-        is_immutable = 1;
+        // is_immutable defaults to 0 -> owner may update until make_immutable() is called.
     }
 
-    function update(address Apsi_rev, address Apsi_inrev, uint256 q, uint256 nm1modq) public {
-        if (is_immutable > 0) {
-            storage_q = q; //prime field modulus
-            storage_nm1modq = nm1modq; //n^-1 mod 12289, used in inverse NTT
+    function update(address Apsi_rev, address Apsi_inrev, uint256 q, uint256 nm1modq) public onlyOwner {
+        require(is_immutable == 0, "immutable");
+        storage_q = q; //prime field modulus
+        storage_nm1modq = nm1modq; //n^-1 mod 12289, used in inverse NTT
 
-            o_psirev = Apsi_rev;
-            o_psi_inv_rev = Apsi_inrev;
-        }
+        o_psirev = Apsi_rev;
+        o_psi_inv_rev = Apsi_inrev;
     }
 
-    //by calling this function, the contract storage variables cannot be modified  (precomputed values)
-    function make_immutable() public {
+    //by calling this function, the contract storage variables cannot be modified (precomputed values)
+    function make_immutable() public onlyOwner {
         is_immutable = 1;
     }
 

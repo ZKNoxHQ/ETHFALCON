@@ -56,36 +56,36 @@ function falcon_normalize(
     returns (bool result)
 {
     uint256 norm = 0;
+    uint256 outOfRange = 0;
 
-    // OPTIMIZATION: Added memory-safe annotation, use lt instead of gt for clarity
     assembly ("memory-safe") {
-        for { let offset := 32 } lt(offset, 16384) { offset := add(offset, 32) } {
-            let s1i := addmod(mload(add(hashed, offset)), sub(q, mload(add(s1, offset))), q) //s1[i] = addmod(hashed[i], q - s1[i], q);
-            let cond := gt(s1i, qs1) //s1[i] > qs1 ?
+        // ||s1||^2 contribution. s1_i := (hashed_i - s1_i) mod q, centered in (-q/2, q/2].
+        // 512 coefficients -> relative offsets 32..16384 inclusive => bound 16416.
+        for { let offset := 32 } lt(offset, 16416) { offset := add(offset, 32) } {
+            let s1i := addmod(mload(add(hashed, offset)), sub(q, mload(add(s1, offset))), q)
+            let cond := gt(s1i, qs1)
             s1i := add(mul(cond, sub(q, s1i)), mul(sub(1, cond), s1i))
             norm := add(norm, mul(s1i, s1i))
         }
 
-        //s1 = _ZKNOX_NTT_Expand(s2); //avoiding another memory declaration
+        // ||s2||^2 contribution. Expand the 32 compact words into 512 16-bit
+        // coefficients, range-check each (< q, otherwise s_i and s_i+q are
+        // interchangeable and the signature is malleable), and accumulate the
+        // centered squared sum.
         let aa := s2
-        let bb := add(s1, 32)
         for { let i := 0 } lt(i, 32) { i := add(i, 1) } {
             aa := add(aa, 32)
             let ai := mload(aa)
-
             for { let j := 0 } lt(j, 16) { j := add(j, 1) } {
-                mstore(add(bb, mul(32, add(j, shl(4, i)))), and(shr(shl(4, j), ai), 0xffff)) //b[(i << 4) + j] = (ai >> (j << 4)) & mask16;
+                let s2i := and(shr(shl(4, j), ai), 0xffff)
+                outOfRange := or(outOfRange, iszero(lt(s2i, q)))
+                let cond := gt(s2i, qs1)
+                let centered := add(mul(cond, sub(q, s2i)), mul(sub(1, cond), s2i))
+                norm := add(norm, mul(centered, centered))
             }
         }
 
-        for { let offset := add(s1, 32) } lt(offset, 16384) { offset := add(offset, 32) } {
-            let s1i := mload(offset) //s1[i]
-            let cond := gt(s1i, qs1) //s1[i] > qs1 ?
-            s1i := add(mul(cond, sub(q, s1i)), mul(sub(1, cond), s1i))
-            norm := add(norm, mul(s1i, s1i))
-        }
-
-        result := gt(sigBound, norm) //norm < SigBound ?
+        result := and(iszero(outOfRange), gt(sigBound, norm))
     }
 
     return result;

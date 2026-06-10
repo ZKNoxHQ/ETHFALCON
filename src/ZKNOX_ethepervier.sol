@@ -41,29 +41,29 @@ contract ZKNOX_ethepervier {
         uint256[] memory s1 = _ZKNOX_NTT_Expand(cs1); //avoiding another memory declaration
         uint256[] memory s2 = _ZKNOX_NTT_Expand(cs2); //avoiding another memory declaration
 
-        // (s1,s2) must be short
+        // (s1,s2) must be short and in canonical range [0, q).
         uint256 norm = 0;
-        // As (σ1,σ2) are given with positive values, small negative values are actually large (close to q).
+        uint256 outOfRange = 0;
 
         assembly {
-            //normalization
-            for { let offset := 32 } gt(16384, offset) { offset := add(offset, 32) } {
+            // 512 coefficients each => relative offsets 32..16384 inclusive (bound 16416).
+            for { let offset := 32 } lt(offset, 16416) { offset := add(offset, 32) } {
                 let s1i := mload(add(s1, offset))
-
-                let cond := gt(s1i, qs1) //s1[i] > qs1 ?
+                outOfRange := or(outOfRange, iszero(lt(s1i, q)))
+                let cond := gt(s1i, qs1)
                 s1i := add(mul(cond, sub(q, s1i)), mul(sub(1, cond), s1i))
                 norm := add(norm, mul(s1i, s1i))
 
                 let s2i := mload(add(s2, offset))
-                let cond2 := gt(s2i, qs1) //s1[i] > qs1 ?
+                outOfRange := or(outOfRange, iszero(lt(s2i, q)))
+                let cond2 := gt(s2i, qs1)
                 s2i := add(mul(cond2, sub(q, s2i)), mul(sub(1, cond2), s2i))
                 norm := add(norm, mul(s2i, s2i))
             }
         }
 
-        if (norm > sigBound) {
-            revert("norm too large");
-        }
+        if (outOfRange != 0) revert("coefficient out of range");
+        if (norm > sigBound) revert("norm too large");
 
         s2 = _ZKNOX_NTTFW_vectorized(s2); //ntt(s2)
 
