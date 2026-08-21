@@ -77,6 +77,13 @@ contract ZKNOX_ethfalcon is ISigVerifier {
     }
 
     function verify(bytes calldata _pubkey, bytes32 _digest, bytes calldata _sig) external view returns (bytes4) {
+        //enforce the canonical encoding: salt (40 bytes) || s2 (32 words of 32 bytes).
+        //floor division below would otherwise accept 1 to 31 trailing garbage bytes,
+        //yielding up to 32 distinct accepted encodings of the same signature.
+        if (_sig.length != SALT_LEN + 32 * falcon_S256) {
+            revert("invalid signature length");
+        }
+
         address pkContractAddress;
         assembly {
             pkContractAddress := shr(96, calldataload(_pubkey.offset))

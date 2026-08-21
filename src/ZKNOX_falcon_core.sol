@@ -42,7 +42,7 @@ function falcon_checkPolynomialRange(uint256[] memory polynomial, bool is_compac
 ///      1. Computes s1 = h - s1 (mod q) where h is hash-to-point result
 ///      2. Normalizes both s1 and s2 to centered representatives (-q/2, q/2]
 ///      3. Computes squared L2 norm: ||s1||² + ||s2||²
-///      4. Verifies norm² < sigBound = 34034726
+///      4. Verifies norm² <= sigBound = 34034726
 /// @param s1 First signature component (will be overwritten with h - s1)
 /// @param s2 Second signature component in compacted format (32 words)
 /// @param hashed Hash-to-point result (512 coefficients)
@@ -85,7 +85,8 @@ function falcon_normalize(
             }
         }
 
-        result := and(iszero(outOfRange), gt(sigBound, norm))
+        // accept iff norm <= sigBound, matching the reference (reject only norm > sigBound)
+        result := and(iszero(outOfRange), iszero(gt(norm, sigBound)))
     }
 
     return result;
@@ -94,7 +95,7 @@ function falcon_normalize(
 /// @notice Core Falcon-512 verification algorithm with compacted input
 /// @dev Implements the Falcon signature verification equation:
 ///      1. Computes s1 = h - h·s2 (in NTT domain) where h is the public key
-///      2. Verifies ||s1||² + ||s2||² < sigBound
+///      2. Verifies ||s1||² + ||s2||² <= sigBound
 /// @dev Uses compacted polynomial representation for gas efficiency
 /// @param s2 Second signature component (32 uint256 words, compacted)
 /// @param ntth Public key in NTT domain (32 uint256 words, compacted)
