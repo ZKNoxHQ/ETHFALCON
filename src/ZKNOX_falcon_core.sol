@@ -110,11 +110,11 @@ function falcon_core(
     returns (bool result)
 {
     if (hashed.length != 512) return false;
-    if (s2.length != 32) return false; //"Invalid signature length"
+    if (s2.length != 32 || ntth.length != 32) return false;
 
-    result = false;
-
-    uint256[] memory s1 = _ZKNOX_NTT_Expand(_ZKNOX_NTT_HALFMUL_Compact(s2, ntth)); //build on top of specific NTT
+    uint256[] memory s1 = _ZKNOX_NTTFW_vectorized(_ZKNOX_NTT_Expand(s2));
+    _ZKNOX_VECMULMOD_ExpandedByCompactInPlace(s1, ntth);
+    s1 = _ZKNOX_NTTINV_vectorized(s1);
 
     return falcon_normalize(s1, s2, hashed);
 }
