@@ -99,6 +99,21 @@ function _ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b) pure returns (
     }
 }
 
+/// @dev Multiplies an expanded NTT polynomial by a compact NTT polynomial in place.
+///      `a` must contain 512 field elements and `b` must contain 32 packed words.
+function _ZKNOX_VECMULMOD_ExpandedByCompactInPlace(uint256[] memory a, uint256[] memory b) pure {
+    assembly ("memory-safe") {
+        let aPtr := add(a, 32)
+        let bPtr := add(b, 32)
+        for { let i := 0 } lt(i, 512) { i := add(i, 1) } {
+            let word := mload(add(bPtr, shl(5, shr(4, i))))
+            let bi := and(shr(shl(4, and(i, 0xf)), word), 0xffff)
+            mstore(aPtr, mulmod(mload(aPtr), bi, q))
+            aPtr := add(aPtr, 32)
+        }
+    }
+}
+
 function _ZKNOX_NTTINV_vectorized(uint256[] memory a) pure returns (uint256[] memory) {
     uint256[32] memory psirev = [
         0x222b0db009f121dc066e2b452386191d05192d2f19991026141a203605c70001,
