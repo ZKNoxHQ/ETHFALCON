@@ -8,11 +8,15 @@ import "../src/ZKNOX_ethfalcon.sol";
 import "../src/ZKNOX_ethepervier.sol";
 import "../src/ZKNOX_NTT_falcon.sol";
 import "../src/ZKNOX_falcon_encodings.sol";
+import "../src/ZKNOX_falcon_fast.sol";
+import "../src/ZKNOX_shake_fast.sol";
 
 contract Benchmark is Test {
     ZKNOX_falcon falcon;
     ZKNOX_ethfalcon ethfalcon;
     ZKNOX_ethepervier ethepervier;
+    ZKNOX_falcon_fast falconFast;
+    address f1600Helper;
 
     // forgefmt: disable-next-line
 	uint256[]  f = [9999, 7085, 6820, 8778, 6376, 3654, 751, 8032, 9000, 7804, 1199, 698, 11321, 9441, 11590, 1244, 4515, 10616, 6860, 441, 6800, 11579, 4591, 5953, 10392, 4264, 2672, 10279, 1124, 2490, 3242, 6344, 5052, 1585, 4677, 3186, 4500, 6989, 439, 2822, 12191, 8937, 1146, 10412, 9422, 8183, 6233, 12110, 10972, 7139, 4359, 5441, 171, 7485, 579, 7478, 8148, 523, 8046, 11529, 5261, 11343, 478, 11537, 8707, 1510, 4800, 3705, 6474, 8752, 10907, 5380, 2680, 2901, 8837, 174, 7393, 11327, 3000, 2962, 10762, 7159, 8732, 7335, 11165, 6400, 12254, 437, 7048, 763, 4495, 1246, 6650, 5548, 3303, 2931, 4471, 5342, 1372, 3210, 11499, 8447, 2992, 1331, 9795, 4331, 11998, 10437, 256, 8575, 3680, 8881, 11551, 8194, 5884, 8706, 209, 6116, 8410, 1267, 12001, 12014, 3395, 10985, 9744, 4718, 2837, 253, 5994, 10098, 1209, 1776, 3579, 11570, 3584, 8590, 2377, 5086, 6065, 4455, 8477, 11240, 1822, 3409, 8505, 210, 753, 11201, 5575, 8074, 5896, 4296, 186, 9500, 1067, 7082, 373, 6179, 2421, 3628, 8590, 11689, 6489, 6551, 8331, 10160, 1585, 8286, 799, 10449, 8457, 11846, 5133, 10416, 11189, 8187, 8623, 10356, 11588, 2870, 5605, 6259, 1407, 2593, 6225, 7484, 9443, 6445, 3625, 9208, 2332, 431, 11337, 9534, 6147, 5040, 545, 11742, 6332, 6725, 6040, 3370, 7499, 4852, 2916, 808, 9664, 10995, 10026, 12143, 8422, 2811, 3387, 10, 2568, 5567, 7382, 2162, 8864, 11244, 3273, 6476, 4174, 12066, 2462, 1188, 4064, 4948, 4334, 3219, 9572, 9314, 672, 4486, 9624, 4458, 11150, 804, 7908, 1939, 6524, 3338, 4090, 11839, 3566, 4053, 5510, 1824, 3590, 4512, 7475, 6840, 6576, 3581, 4794, 1295, 5474, 7370, 10342, 11576, 6954, 9507, 6341, 7708, 8462, 623, 10455, 1541, 1594, 3792, 8428, 5141, 6225, 7364, 11122, 6508, 2612, 11177, 5824, 2083, 6083, 11117, 11272, 3482, 1941, 9261, 11511, 1737, 11921, 8655, 11129, 8438, 4302, 3417, 5024, 11466, 11899, 9353, 7791, 9025, 7296, 4018, 10424, 7731, 11727, 6659, 2313, 8413, 683, 65, 2686, 4672, 9454, 329, 8409, 4128, 6098, 8959, 483, 8285, 7679, 8206, 11528, 830, 9903, 4553, 1983, 2615, 5720, 7285, 5117, 11315, 6235, 9229, 5817, 8071, 8875, 7024, 8567, 6100, 10668, 205, 7304, 281, 12242, 9947, 1653, 9104, 3412, 6728, 4368, 1804, 6962, 10170, 7739, 3254, 10975, 12197, 1218, 1816, 5613, 313, 7621, 594, 5447, 12164, 8562, 10386, 6368, 9309, 8303, 7136, 7366, 5550, 8623, 4376, 6385, 4930, 3184, 10000, 8112, 8324, 3566, 6386, 10547, 108, 95, 3433, 757, 2675, 8604, 7700, 3169, 4135, 272, 10108, 3674, 4476, 3684, 2662, 12105, 4869, 4321, 10208, 5599, 4868, 9853, 7446, 7440, 4281, 7633, 10743, 5528, 11175, 1841, 1030, 6640, 3909, 274, 1231, 2112, 5318, 8734, 9417, 10719, 10515, 10507, 151, 9255, 5479, 7751, 9110, 10075, 712, 6244, 2837, 6071, 3809, 12200, 6716, 5507, 10742, 5016, 2999, 5379, 8065, 4024, 10958, 8328, 5454, 10131, 6814, 5121, 4739, 132, 11121, 6487, 8948, 3515, 8429, 3096, 3514, 11468, 7402, 3186, 7126, 6968, 9720, 6853, 8190, 7780, 7266, 3759, 6383, 3490, 1828, 4248, 5327, 4740, 9462, 8450, 10998, 6238, 11283, 6074, 8314, 11629, 11905, 10089, 12099, 3489, 2352, 8721, 416, 8068, 8319, 213, 5593, 4978, 2617, 3447, 11486, 5677, 10457, 4227, 209, 6519, 639, 5568, 7873, 11843, 11108];
@@ -26,6 +30,23 @@ contract Benchmark is Test {
         falcon = new ZKNOX_falcon();
         ethfalcon = new ZKNOX_ethfalcon();
         ethepervier = new ZKNOX_ethepervier();
+
+        // deploy the unrolled Keccak-f[1600] helper (fireblocks-labs
+        // helpers/f1600_170.hex, 21,622 bytes of raw runtime) and bind the
+        // fast-SHAKE Falcon verifier to it.
+        string[] memory cmds = new string[](2);
+        cmds[0] = "cat";
+        cmds[1] = "test/f1600_170.hex";
+        bytes memory runtime = vm.ffi(cmds);
+        bytes memory initCode = abi.encodePacked(hex"61", uint16(runtime.length), hex"8061000b5f395ff3", runtime);
+        address helper;
+        assembly {
+            helper := create(0, add(initCode, 32), mload(initCode))
+        }
+        require(helper != address(0), "f1600-170: CREATE failed");
+        require(helper.code.length == 21622, "f1600-170: wrong runtime size");
+        f1600Helper = helper;
+        falconFast = new ZKNOX_falcon_fast(helper);
     }
 
     function testBenchmarkNTT() public view {
@@ -84,6 +105,43 @@ contract Benchmark is Test {
         for (uint256 i = 0; i < n; i++) {
             assertEq(hash[i], expected_hash[i]);
         }
+
+        // same sampler, helper-backed SHAKE256
+        uint256 gasStart2 = gasleft();
+        uint256[] memory hashFast = hashToPointNISTFast(salt, message, f1600Helper);
+        uint256 gasUsed2 = gasStart2 - gasleft();
+        console.log("NIST HashToPoint FAST: ", gasUsed2);
+        for (uint256 i = 0; i < n; i++) {
+            assertEq(hashFast[i], expected_hash[i]);
+        }
+    }
+
+    /// fresh-memory measurement of the helper-backed hash-to-point: the copy
+    /// inside testBenchHashToPointNIST runs after the baseline has already
+    /// expanded memory, which understates it.
+    function testBenchHashToPointNISTFastAlone() public view {
+        bytes memory salt =
+            "\x4b\x09\x9f\x8e\x30\x0f\x01\xb8\x65\x0f\x1f\x4b\x1d\x8f\xcf\x3f\x3c\xb5\x3f\xb8\xe9\xeb\x2e\xa2\x03\xbd\xc9\x70\xf5\x0a\xe5\x54\x28\xa9\x1f\x7f\x53\xac\x26\x6b";
+        uint256 gasStart = gasleft();
+        uint256[] memory hash = hashToPointNISTFast(salt, message, f1600Helper);
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("NIST HashToPoint FAST (fresh mem):", gasUsed);
+        assertEq(hash[0], 2578);
+        assertEq(hash[511], 11296);
+    }
+
+    /// one Keccak-f[1600], both ways.
+    function testBenchF1600() public view {
+        uint64[25] memory stA;
+        uint256 gasStart = gasleft();
+        stA = f1600(stA);
+        console.log("f1600 pure Solidity:   ", gasStart - gasleft());
+
+        uint256[25] memory stB;
+        f1600Fast170(stB, f1600Helper); // warm the helper address
+        gasStart = gasleft();
+        f1600Fast170(stB, f1600Helper);
+        console.log("f1600 helper (warm):   ", gasStart - gasleft());
     }
 
     function testBenchHashToPointEVM() public view {
@@ -187,6 +245,12 @@ contract Benchmark is Test {
         uint256 gasUsed = gasStart - gasleft();
         console.log("Verify NIST cost:      ", gasUsed);
         assertEq(true, result);
+
+        uint256 gasStart2 = gasleft();
+        bool resultFast = falconFast.verify(message, salt, s2, pkc);
+        uint256 gasUsed2 = gasStart2 - gasleft();
+        console.log("Verify NIST FAST cost: ", gasUsed2);
+        assertEq(true, resultFast);
     }
 
     function testBenchVerifyEVM()
