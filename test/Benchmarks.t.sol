@@ -10,6 +10,9 @@ import "../src/ZKNOX_NTT_falcon.sol";
 import "../src/ZKNOX_falcon_encodings.sol";
 import "../src/ZKNOX_falcon_fast.sol";
 import "../src/ZKNOX_falcon_turbo.sol";
+import "../src/ZKNOX_falcon_fused.sol";
+import "../src/ZKNOX_HashToPoint_packed.sol";
+import "../src/ZKNOX_falcon_core_fused.sol";
 import "../src/ZKNOX_shake_fast.sol";
 
 contract Benchmark is Test {
@@ -18,6 +21,7 @@ contract Benchmark is Test {
     ZKNOX_ethepervier ethepervier;
     ZKNOX_falcon_fast falconFast;
     ZKNOX_falcon_turbo falconTurbo;
+    ZKNOX_falcon_fused falconFused;
     address f1600Helper;
 
     // forgefmt: disable-next-line
@@ -50,6 +54,7 @@ contract Benchmark is Test {
         f1600Helper = helper;
         falconFast = new ZKNOX_falcon_fast(helper);
         falconTurbo = new ZKNOX_falcon_turbo(helper);
+        falconFused = new ZKNOX_falcon_fused(helper);
     }
 
     function testBenchmarkNTT() public view {
@@ -89,10 +94,22 @@ contract Benchmark is Test {
         for (uint256 i = 0; i < 512; i++) {
             hashed[i] = _hashed[i];
         }
+        uint256[] memory pk = pkc; // one storage read, shared by the three cores below
         uint256 gasStart = gasleft();
-        bool result = falcon_core(s2, pkc, hashed);
+        bool result = falcon_core(s2, pk, hashed);
         uint256 gasUsed = gasStart - gasleft();
         console.log("Falcon core cost:      ", gasUsed);
+
+        // same decision, packed hash-to-point layout (4 x 64-bit lanes per word)
+        uint256[] memory hashedPacked = new uint256[](128);
+        for (uint256 i = 0; i < 512; i++) {
+            hashedPacked[i >> 2] |= _hashed[i] << (64 * (i & 3));
+        }
+        gasStart = gasleft();
+        bool resultFused = falcon_core_fused(s2, pk, hashedPacked);
+        gasUsed = gasStart - gasleft();
+        console.log("Falcon core FUSED cost:", gasUsed);
+        assertEq(result, resultFused);
         assertEq(true, result);
     }
 
@@ -131,6 +148,18 @@ contract Benchmark is Test {
         console.log("NIST HashToPoint FAST (fresh mem):", gasUsed);
         assertEq(hash[0], 2578);
         assertEq(hash[511], 11296);
+    }
+
+    /// same, packed output (ZKNOX_HashToPoint_packed.sol)
+    function testBenchHashToPointNISTPackedAlone() public view {
+        bytes memory salt =
+            "\x4b\x09\x9f\x8e\x30\x0f\x01\xb8\x65\x0f\x1f\x4b\x1d\x8f\xcf\x3f\x3c\xb5\x3f\xb8\xe9\xeb\x2e\xa2\x03\xbd\xc9\x70\xf5\x0a\xe5\x54\x28\xa9\x1f\x7f\x53\xac\x26\x6b";
+        uint256 gasStart = gasleft();
+        uint256[] memory hash = hashToPointNISTPacked(salt, message, f1600Helper);
+        uint256 gasUsed = gasStart - gasleft();
+        console.log("NIST HashToPoint PACKED (fresh mem):", gasUsed);
+        assertEq(hash[0] & 0xffffffffffffffff, 2578);
+        assertEq(hash[127] >> 192, 11296);
     }
 
     /// one Keccak-f[1600], both ways.
@@ -259,6 +288,12 @@ contract Benchmark is Test {
         bool resultTurbo = falconTurbo.verify(message, salt, s2, pkc);
         uint256 gasUsed3 = gasStart3 - gasleft();
         console.log("Verify NIST TURBO cost:", gasUsed3);
+        assertEq(true, resultTurbo);
+
+        gasStart3 = gasleft();
+        resultTurbo = falconFused.verify(message, salt, s2, pkc);
+        gasUsed3 = gasStart3 - gasleft();
+        console.log("Verify NIST FUSED cost:", gasUsed3);
         assertEq(true, resultTurbo);
     }
 

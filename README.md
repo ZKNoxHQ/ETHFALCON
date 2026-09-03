@@ -93,6 +93,9 @@ make bench
 | Function                   | Description               | gas cost | Tests Status |
 |------------------------|---------------------|---------------------|---------------------|
 | ZKNOX_falcon.verify       | NIST       | 3.9M | :white_check_mark:|
+| ZKNOX_falcon_fast.verify       | NIST, external Keccak-f[1600] helper (EXTCODEHASH-bound)       | 1.96M | :white_check_mark:|
+| ZKNOX_falcon_turbo.verify       | NIST, + packed SWAR NTT       | 1.33M | :white_check_mark:|
+| ZKNOX_falcon_fused.verify       | NIST, + fused radix-8 NTT, Yul sampler, SWAR norms       | 0.76M | :white_check_mark:|
 | ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.5 M | :white_check_mark:|
 | ZKNOX_epervier.verify       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
 

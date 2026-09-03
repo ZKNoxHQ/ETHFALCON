@@ -107,3 +107,63 @@ Que le bytecode épinglé calcule bien Keccak-f[1600]. Le hash garantit qu'on
 appelle *ce* bytecode-là, pas qu'il soit correct. Cette correction-là repose sur
 le différentiel amont (lib-keccak, 251 KAT SHAKE) et reste sans provenance
 reproductible (ADR-001, point 2).
+
+## ADR-003 — Fusion radix-8 de la NTT, sampler Yul, normes SWAR : un vérifieur séparé, additif
+
+**Contexte**
+Après la SHAKE externe (ADR-001/002) et la NTT packée, `ZKNOX_falcon_turbo`
+coûtait 1 327 039 gas : 535 k de hash-to-point (dont 334 k de permutations
+incompressibles et ~200 k de glue Solidity du sampler), ~750 k de `falcon_core`
+(NTT 190 k + INTT 252 k + normalize 171 k + pack/unpack ~80 k). Le déroulage et
+via-IR avaient été mesurés à 3-10 % et écartés. Le levier réel du vérifieur
+ML-DSA de fireblocks n'est pas le déroulage mais la fusion de couches : un
+octet de mots chargé une fois pour trois couches.
+
+**Décision**
+1. Nouvelle transformée `ZKNOX_NTT_falcon_fused.sol`, générée, en six passes
+   radix-8 (A, B, C / C', B', A'), avec le décodage compact -> lanes replié
+   dans les loads de A, le produit pointwise par la clé compacte replié dans
+   C', n^-1 replié dans A', sortie canonique. Le schedule est validé d'abord en
+   Python (modèle avec assertions de bornes), puis en Solidity par différentiel
+   contre la transformée packée (elle-même assertée contre la référence).
+2. Échantillonneur hash-to-point en Yul lisant l'état de l'éponge, sortie
+   packée. Même fonction mathématique, assertée égale sur le KAT et par fuzz.
+3. Normes en SWAR 16 bits (`E * rev(E)`), range check en premier.
+4. Un vérifieur SÉPARÉ `ZKNOX_falcon_fused` (même API, même liaison de helper)
+   plutôt qu'une modification de `ZKNOX_falcon_turbo` : les trois versions
+   (référence, turbo, fused) restent mesurables et différentiables dans un même
+   run, et un audit peut lire la version lente comme spécification.
+5. Le fichier Solidity de la transformée est un ARTEFACT GÉNÉRÉ (en-tête
+   explicite, commande de régénération, `forge fmt` ensuite). Les corps
+   radix-8 et les passes intra-mot déroulées ×4 sont répétitifs, et leur
+   validité dépend de la discipline de pile du codegen legacy (≤ 16 slots
+   atteignables, aucun spill) : une source unique évite qu'une correction sur
+   l'une des six passes ne diverge des cinq autres.
+
+**Conséquences**
+- 755 683 gas par `verify` (1,76x vs turbo, 5,17x vs l'origine). Le helper
+  Keccak-f (418 k pour 10 permutations sur le KAT) est désormais 55 % du coût
+  et le plancher tant qu'on garde SHAKE256.
+- Runtime 19 342 octets (marge EIP-170 5 234). Le déroulage ×4 et les
+  constantes de 32 octets sont le prix des passes intra-mot sans curseur ; les
+  passes radix-8 elles-mêmes sont compactes.
+- Bornes lazy explicites (aller < 19q, inverse < 128q avant la dernière
+  couche, produits < 2^31, Barrett < 2^58) documentées en tête de fichier et
+  exercées par les vecteurs saturés. Toute modification du schedule doit
+  passer par le modèle Python avant le générateur.
+- La sécurité du verify ne change pas : mêmes contrôles de longueur, même
+  range check sur s2 (fait AVANT la transformée, car le spread suppose des
+  champs de 15 bits), même borne, même liaison du helper. La clé publique est
+  consommée par `mulmod` sur ses champs de 16 bits, comme dans
+  `_ZKNOX_NTT_HALFMUL_Compact` : un champ ≥ q est réduit mod q dans les deux
+  versions.
+
+**Ce qui a été mesuré et refusé**
+Intra-mot inverse en SWAR (139 709 vs 131 149), intra-mot aller en scalaires
+(130 206 vs 119 454), intra-mot avec curseurs et fonctions Yul (72 674 /
+86 450 vs 52 908 / 75 201). Détail dans VERSION.md.
+
+**Ce que ceci ne règle pas**
+Le coût des permutations Keccak-f. Les ~30 k du sampler et les ~25 k de glue
+sont les seules marges restantes hors NTT ; la NTT fusionnée est à ~130 gas par
+papillon-mot pour ses passes alignées, proche du plancher du modèle 4×64.

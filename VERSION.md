@@ -1,5 +1,142 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-03 — NTT radix-8 fusionnée, sampler Yul, normes SWAR (`ZKNOX_falcon_fused`)
+
+Reprise des idées restantes de fireblocks-labs/evm-ml-dsa-verifier (cca262b)
+après la SHAKE externe et la NTT packée : fusion de couches, décodage direct
+dans le layout de l'arithmétique, échantillonneur sans `bytes`.
+
+### Added
+- `src/ZKNOX_NTT_falcon_fused.sol` (GÉNÉRÉ par `pythonref/gen_ntt_fused.py`,
+  puis `forge fmt`) — la NTT packée réorganisée en passes radix-8 : chaque
+  octet de mots est chargé une fois, traverse trois couches sur la pile et
+  est stocké une fois (8 loads + 8 stores pour 12 papillons-mots au lieu de
+  24 + 24, une itération de boucle pour 12 papillons au lieu d'une par
+  papillon). Mêmes tables `psirev`, même twiddle par papillon que
+  `ZKNOX_NTT_falcon_packed.sol`.
+  - aller : A (t=256,128,64) lit directement la forme compacte (le spread
+    16 bits -> lanes de 64 est une multiplication par `1 + 2^48 + 2^96 + 2^144`
+    masquée, 4 ops au lieu de 15), B (t=32,16,8) avec les 7 twiddles du bloc
+    packés dans le scratch 0x00, C (t=4 sur la paire, puis t=2 et t=1 dans le
+    mot en SWAR, Barrett, biais 2q par couche). Sortie lazy < 19q.
+  - inverse : C' (produit pointwise avec la clé publique COMPACTE replié dans
+    l'extraction scalaire des lanes, `mulmod` exact ; t=1, t=2 scalaires ;
+    t=4 packé), B' (t=8,16,32, sommes jamais réduites), A' (t=64,128,256,
+    n^-1 replié dans la dernière couche, `psirev[1]*n^-1 = 1371` en littéral,
+    sortie CANONIQUE). Plus de `_packFromCompact(ntth)`, `_vecMulPacked` ni
+    `_unpackTo512`.
+  - `_s2NormCompact` (range check + ||s2||² sur les 32 mots compacts) et
+    `_normS1Packed` (||h - s1||² sur les 128 mots packés) en SWAR sur des mots
+    de seize champs de 16 bits : canonicalisation et centrage par bit de
+    signe de champ, somme des carrés par `E * rev(E)` (position 7 du produit
+    de deux mots à huit champs de 32 bits = somme des huit carrés).
+- `pythonref/gen_ntt_fused.py` — générateur. Les corps radix-8 (12 papillons)
+  et les passes intra-mot (4 paires déroulées par mot de table) sont
+  répétitifs et la discipline de pile (≤ 16 slots, codegen legacy, pas de
+  spill) dépend de l'ordre exact des loads, temporaires et blocs : une seule
+  source pour les six passes.
+- `pythonref/model_ntt_fused.py` — modèle Python du schedule fusionné, validé
+  couche par couche contre un modèle de la NTT packée sur 30 tirages dont le
+  cas saturé (tous les coefficients à q-1) ; chaque multiplication Barrett
+  asserte la localité de lane (`x*M40 < 2^64`), chaque branche soustractive
+  asserte sa positivité.
+- `src/ZKNOX_HashToPoint_packed.sol` — `hashToPointNISTPacked` : même
+  fonction que `hashToPointNIST` (lectures 16 bits big-endian, acceptation
+  `< 5q`, `% q`, 512 coefficients), mais l'échantillonneur est en Yul et lit
+  les 17 lanes de l'état de l'éponge (une inversion d'octets par lane) au lieu
+  d'un bloc `bytes` de 136 octets, et écrit directement le layout packé
+  (4 coefficients par mot). Plus de `tmp`, de squeeze, de bounds checks ni de
+  `%` checké.
+- `src/ZKNOX_falcon_core_fused.sol` — `falcon_core_fused(s2, ntth,
+  hashedPacked)` : range check d'abord (un coefficient ≥ q est rejeté avant
+  toute arithmétique, comme dans `falcon_normalize`), puis
+  `s1 = _nttInvFusedMul(_nttFwFused(s2), ntth)`, norme = ||s2||² +
+  ||h - s1||², accepte ssi ≤ `sigBound` (34 034 726). Même décision que
+  `falcon_core`, assertée.
+- `src/ZKNOX_falcon_fused.sol` — `ZKNOX_falcon_turbo` avec les deux
+  remplacements. Même API `verify(h, salt, s2, ntth)`, même liaison
+  `EXTCODEHASH` du helper (ADR-002), mêmes contrôles de longueur.
+- `test/ntt_fused.t.sol` (12) — différentiel de la transformée fusionnée
+  contre la packée (aller mod q avec borne 19q assertée ; produit + inverse
+  exact et canonique), 8 vecteurs fixes, 256 tirages de fuzz par direction,
+  cas saturés des deux côtés ; normes contre une réécriture de
+  `falcon_normalize`, drapeau de range sur les 16 positions avec q, q+1,
+  0x3fff, 0x4000, 0x7fff, 0x8000, 0xc001, 0xffff ; mesures de composants.
+- `test/falcon_fused.t.sol` (14) — `hashToPointNISTPacked` contre
+  `hashToPointNISTFast` (vecteur KAT, 256 tirages (salt, message), longueurs
+  0..296 pour les chemins de padding) ; `falcon_core_fused` contre
+  `falcon_core` des DEUX côtés de la borne (balayage d'amplitude d'erreur
+  autour de s1, fuzz), sur la borne exacte (norme = sigBound acceptée,
+  sigBound + 3 refusée : 34 034 726 = 5833² + 104² + 4² + 2² + 1²), s2 hors
+  plage rejeté malgré une norme nulle, entrées aléatoires ; KAT NIST
+  (`ZKNOX_falcon`, turbo et fused acceptent ; bit de signature, message et
+  salt altérés refusés) ; contrôles de longueur ; liaison du helper.
+
+### Changed
+- `test/Benchmarks.t.sol` — `Verify NIST FUSED cost`, `Falcon core FUSED
+  cost` (décision assertée égale à `falcon_core`), `NIST HashToPoint PACKED
+  (fresh mem)`. Le bench du core lit `pkc` en mémoire une fois pour les trois
+  cores (32 SLOAD froids = 67 k sinon comptés dans la première mesure).
+
+### Measured (forge 1.4.2-nightly c808c4cd, solc 0.8.25, evm cancun, optimizer 10000, legacy codegen)
+| Mesure | Avant (turbo) | Après (fused) | Ratio |
+|---|---:|---:|---:|
+| `verify` NIST, vecteur KAT | 1 327 039 | **755 683** | 1,76x |
+| `falcon_core` (packé -> fusionné) | 748 923 | 282 086 | 2,66x |
+| NTTFW depuis la forme compacte | 218 880 | 119 454 | 1,83x |
+| pack + VECMUL + NTTINV + unpack | 358 244 | 131 149 | 2,73x |
+| `falcon_normalize` -> `_s2NormCompact` + `_normS1Packed` | 171 236 | 33 030 | 5,2x |
+| `hashToPointNIST` FAST -> PACKED (mémoire fraîche, 8 blocs) | 535 067 | 421 498 | 1,27x |
+
+Depuis l'origine : 3 910 833 -> 755 683, **5,17x**.
+
+Ventilation du verify KAT (10 permutations, 1 absorb + 9 squeeze) :
+permutations 418 k (55 %), sampler ~30 k, core 282 k, glue ~25 k. Le helper
+Keccak-f est désormais le plancher : le reste du chemin fait 340 k.
+
+Profil des passes : radix-8 ≈ 25 k chacune (16 octets, ~130 gas par
+papillon-mot, contre ~330 dans la version couche par couche) ; intra-mot
+C = 53 k, C' = 75 k (le produit pointwise à 4 multiplicateurs distincts par
+mot impose l'extraction scalaire).
+
+Taille : `ZKNOX_falcon_fused` 19 342 octets de runtime (turbo : 9 814), marge
+EIP-170 5 234. Le déroulage ×4 des passes intra-mot et les constantes de
+32 octets répétées en sont la cause ; accepté.
+
+### Bornes
+- aller : lanes canoniques en entrée, +2q par couche (V < 2q par Barrett,
+  biais 2q), donc < 19q après neuf couches ; produits twiddle < 19q·q < 2^28.
+- inverse : lanes < 2q après C', les sommes doublent par couche sans
+  réduction (< 16q après B', < 128q avant la dernière couche), branche
+  soustractive `u + Kq - v` < 2Kq ; tout produit < 128q·q < 2^31, toute
+  multiplication Barrett < 2^58 (localité de lane jusqu'à 2^64).
+- normes : champs de 16 bits, `v < 2q` -> `v + 2^15 - q < 2^16` sans retenue ;
+  carrés < 2^26, huit carrés < 2^29 dans un champ de 32 bits, la position 6
+  du produit (< 7·2^26) ne déborde jamais dans la position 7.
+
+### Essayé puis ÉCARTÉ (mesuré)
+- intra-mot inverse en SWAR (pointwise par `mul` + masque de lane, GS t=1/t=2
+  packés, sommes lazy jusqu'à 1024q, schedule de biais 8/16/32/64/128/256/512
+  validé dans le modèle) : 139 709 contre 131 149 pour la version scalaire.
+  `mulmod` (8 gas, exact) bat un Barrett de lane (~33 gas avec ses PUSH)
+  quand il en faut un par lane de toute façon.
+- intra-mot aller en scalaires `mulmod` : 130 206 contre 119 454 en SWAR
+  (là, une multiplication sert deux lanes).
+- curseurs de twiddles sur la pile + fonctions Yul pour l'intra-mot
+  (première version) : 72 674 / 86 450 contre 52 908 / 75 201 déroulé, tous
+  twiddles extraits par décalage immédiat, scratch 0x00 pour S4 et S2.
+
+### Not done
+- clé publique pré-packée 4×64 (SSTORE2) : ~-29 k mais change l'interface.
+- replier `_normS1Packed` dans la passe A' (les lanes canoniques sont sur la
+  pile avant le store) : ~-8 k, écarté pour garder `_nttInvFusedMul` testable
+  seul.
+- `verifyNISTCompliant`, `ZKNOX_ethfalcon` / epervier : non portés, même
+  recette applicable.
+
+### Tests
+`forge test` : 141/141 (114 existants + 27 nouveaux).
+
 ## [unreleased] — 2026-09-02 — SHAKE256 externalisé (helper Keccak-f[1600] déroulé)
 
 ### Added
