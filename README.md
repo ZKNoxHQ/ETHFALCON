@@ -97,6 +97,22 @@ make bench
 | ZKNOX_epervier.verify       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
 
 
+### Experimental (branch `exp/pq-verifier-gas`, not on `main`)
+
+Not reproducible with `make bench` on this branch — check out
+`exp/pq-verifier-gas` first.
+
+| Function | Description | gas cost | Tests Status |
+|---|---|---|---|
+| ZKNOX_falcon_fast.verify | NIST, SHAKE256 via an external unrolled Keccak-f[1600] | 1.96M | :white_check_mark: |
+| ZKNOX_falcon_turbo.verify | NIST, the above + a packed-SWAR NTT core | 1.33M | :white_check_mark: |
+
+`ZKNOX_falcon_fast` and `ZKNOX_falcon_turbo` delegate the Keccak permutation
+to a 21,622-byte helper contract, bound by `EXTCODEHASH`. Deploying it costs
+~4.32M gas once per chain and every verifier then shares it. The helper
+bytecode is vendored from fireblocks-labs/evm-ml-dsa-verifier (MIT) and has no
+reproducible provenance upstream; see `DECISIONS.md` on the branch.
+
 More benchmark details for both solidity code and python  available [here](./doc/benchmarks.md).
 Those are measured on compacted polynomial representation. For decompressed/kats, add 900K to benchmarks.
 
