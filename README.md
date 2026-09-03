@@ -106,12 +106,24 @@ Not reproducible with `make bench` on this branch — check out
 |---|---|---|---|
 | ZKNOX_falcon_fast.verify | NIST, SHAKE256 via an external unrolled Keccak-f[1600] | 1.96M | :white_check_mark: |
 | ZKNOX_falcon_turbo.verify | NIST, the above + a packed-SWAR NTT core | 1.33M | :white_check_mark: |
+| ZKNOX_falcon_fused.verify | NIST, the above + fused radix-8 NTT, Yul hash-to-point sampler, SWAR norms | 0.76M | :white_check_mark: |
 
-`ZKNOX_falcon_fast` and `ZKNOX_falcon_turbo` delegate the Keccak permutation
-to a 21,622-byte helper contract, bound by `EXTCODEHASH`. Deploying it costs
-~4.32M gas once per chain and every verifier then shares it. The helper
-bytecode is vendored from fireblocks-labs/evm-ml-dsa-verifier (MIT) and has no
-reproducible provenance upstream; see `DECISIONS.md` on the branch.
+Exact figures on the NIST KAT vector (forge nightly c808c4cd, solc 0.8.25,
+evm cancun, optimizer 10000): 3,910,833 / 1,962,789 / 1,327,039 / 755,683 gas,
+i.e. 5.17x from `ZKNOX_falcon`. On `ZKNOX_falcon_fused` the ten Keccak-f[1600]
+permutations of the hash-to-point are 418k of the 756k; the NTT core is 282k
+(`falcon_core` was 1,372k), the norms 33k (`falcon_normalize` was 171k).
+All three verifiers keep the `verify(h, salt, s2, ntth)` API of `ZKNOX_falcon`
+and are asserted against it (KAT, differential fuzz on both sides of the
+signature bound).
+
+`ZKNOX_falcon_fast`, `ZKNOX_falcon_turbo` and `ZKNOX_falcon_fused` delegate
+the Keccak permutation to a 21,622-byte helper contract, bound by
+`EXTCODEHASH`. Deploying it costs ~4.32M gas once per chain and every
+verifier then shares it. The helper bytecode is vendored from
+fireblocks-labs/evm-ml-dsa-verifier (MIT) and has no reproducible provenance
+upstream; see `DECISIONS.md` (ADR-001 to ADR-003) on the branch.
+`ZKNOX_falcon_fused` runs at 19,342 bytes of runtime (EIP-170 margin 5,234).
 
 More benchmark details for both solidity code and python  available [here](./doc/benchmarks.md).
 Those are measured on compacted polynomial representation. For decompressed/kats, add 900K to benchmarks.
