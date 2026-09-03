@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+// Portions Copyright (c) 2026 Fireblocks Ltd. — MIT
+// from fireblocks-labs/evm-ml-dsa-verifier @ cca262b, src/FastKeccak170.sol
 // FILE: ZKNOX_shake_fast.sol
 //
 // Drop-in replacement for the SHAKE256 XOF used by hashToPointNIST.

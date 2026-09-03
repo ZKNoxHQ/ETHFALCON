@@ -53,5 +53,9 @@ test_onchain:
 
 # BENCH
 
+# awk prints the WHOLE Logs block up to the blank line. The previous
+# `grep -A1 "Logs"` kept only the first line after each `Logs:` header, which
+# silently dropped every second and third console.log -- i.e. all the A/B
+# figures emitted alongside a baseline in the same test.
 bench:
-	forge test -j$(CORES) test/Benchmarks.t.sol -vv | grep -A1 "Logs" | grep -v "Logs" | grep -v "\-\-"
+	forge test -j$(CORES) test/Benchmarks.t.sol -vv | awk '/Logs:/{f=1;next} /^$$/{f=0} f'

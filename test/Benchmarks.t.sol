@@ -9,6 +9,7 @@ import "../src/ZKNOX_ethepervier.sol";
 import "../src/ZKNOX_NTT_falcon.sol";
 import "../src/ZKNOX_falcon_encodings.sol";
 import "../src/ZKNOX_falcon_fast.sol";
+import "../src/ZKNOX_falcon_turbo.sol";
 import "../src/ZKNOX_shake_fast.sol";
 
 contract Benchmark is Test {
@@ -16,6 +17,7 @@ contract Benchmark is Test {
     ZKNOX_ethfalcon ethfalcon;
     ZKNOX_ethepervier ethepervier;
     ZKNOX_falcon_fast falconFast;
+    ZKNOX_falcon_turbo falconTurbo;
     address f1600Helper;
 
     // forgefmt: disable-next-line
@@ -47,6 +49,7 @@ contract Benchmark is Test {
         require(helper.code.length == 21622, "f1600-170: wrong runtime size");
         f1600Helper = helper;
         falconFast = new ZKNOX_falcon_fast(helper);
+        falconTurbo = new ZKNOX_falcon_turbo(helper);
     }
 
     function testBenchmarkNTT() public view {
@@ -251,6 +254,12 @@ contract Benchmark is Test {
         uint256 gasUsed2 = gasStart2 - gasleft();
         console.log("Verify NIST FAST cost: ", gasUsed2);
         assertEq(true, resultFast);
+
+        uint256 gasStart3 = gasleft();
+        bool resultTurbo = falconTurbo.verify(message, salt, s2, pkc);
+        uint256 gasUsed3 = gasStart3 - gasleft();
+        console.log("Verify NIST TURBO cost:", gasUsed3);
+        assertEq(true, resultTurbo);
     }
 
     function testBenchVerifyEVM()
