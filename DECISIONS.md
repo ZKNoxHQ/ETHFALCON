@@ -167,3 +167,27 @@ Intra-mot inverse en SWAR (139 709 vs 131 149), intra-mot aller en scalaires
 Le coût des permutations Keccak-f. Les ~30 k du sampler et les ~25 k de glue
 sont les seules marges restantes hors NTT ; la NTT fusionnée est à ~130 gas par
 papillon-mot pour ses passes alignées, proche du plancher du modèle 4×64.
+
+## ADR-004 — Profil de compilation : solc 0.8.30, via-IR, `optimizer_runs = 1000000`
+
+**Contexte**
+Le vérifieur fusionné est fait de noyaux SWAR en assembleur avec des
+constantes de 32 octets répétées ; leur coût dépend du codegen et de
+l'optimiseur de constantes autant que de l'arithmétique (ETHDILITHIUM,
+ADR-004). Le dépôt était en solc 0.8.25, legacy, runs 10000, et via-IR y
+avait été écarté au début du chantier sur la NTT scalaire.
+
+**Décision**
+Profil `default` et `ci` en solc 0.8.30, via-IR, runs 1e6. Mesuré :
+`ZKNOX_falcon_fused` 755 683 → 726 898, core 282 k → 250 k, sans changer
+une ligne de Solidity. solc 0.8.25 ne sait pas placer la pile des passes
+fusionnées sous via-IR ; 0.8.30 oui.
+
+**Conséquences**
+- 5,38x depuis l'origine. Le bytecode déployé change pour tous les contrats,
+  y compris ceux qui ne sont pas des produits (référence scalaire +2,9 %).
+- Règle : un noyau SWAR se mesure dans le contrat final sous le profil
+  livré, et `grep codecopy` sur `forge inspect <contrat> asm` fait partie de
+  la revue.
+- Ce qui reste : 10 permutations Keccak-f pour le hash-to-point sur ce KAT,
+  418 k, 58 % du total, plancher du Falcon NIST avec ce helper.

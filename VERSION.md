@@ -1,5 +1,49 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-05 — profil de compilation : solc 0.8.30, via-IR, `optimizer_runs = 1000000`
+
+### Measured (`forge test test/Benchmarks.t.sol`, vecteur KAT NIST)
+| Vérifieur | 0.8.25 legacy, runs 10000 (avant) | **0.8.30 via-IR, runs 1e6 (après)** |
+|---|---:|---:|
+| `ZKNOX_falcon_fused.verify` | 755 683 | **726 898** (−3,8 %) |
+| `ZKNOX_falcon_turbo.verify` | 1 327 039 | 1 315 117 |
+| `ZKNOX_falcon_fast.verify` | 1 962 789 | 1 975 365 |
+| `ZKNOX_falcon.verify` (référence scalaire) | 3 910 833 | 4 025 409 (+2,9 %) |
+
+Depuis l'origine : 3 910 833 → 726 898, **5,38x**. Noyaux : NTTFW fusionnée
+119 454 → 105 416, produit + INTT 131 149 → 116 898, normes 33 030 → 28 177,
+`falcon_core_fused` 282 086 → 249 705 ; hash-to-point packé 421 498 →
+425 993 (+1 %, le sampler préfère le legacy). Runtime `ZKNOX_falcon_fused`
+19 342 → 18 254 octets ; 141/141 tests.
+
+### Pourquoi
+Transfert de ce qui a été appris sur ZKNoxHQ/ETHDILITHIUM (ADR-004 de ce
+dépôt-là) : les noyaux packés sont nettement moins chers sous le pipeline IR
+(ordonnancement de pile), et `optimizer_runs` doit être assez haut pour que
+l'optimiseur de constantes de solc garde les constantes SWAR de 32 octets en
+PUSH32 au lieu de les recopier par `codecopy` à chaque usage. Vérifié ici :
+aucun `codecopy` de constante dans `ZKNOX_falcon_fused` sous aucun des deux
+profils (solc 0.8.25 legacy n'était pas touché), le gain vient du pipeline IR.
+via-IR avait été écarté en début de chantier (3-4 % mesurés sur la NTT
+scalaire) ; avec solc 0.8.25 il ne compile pas la transformée fusionnée
+(« Could not create stack layout after 1000 iterations »), solc 0.8.30 la
+compile.
+
+### Ce qui ne transfère pas d'ETHDILITHIUM
+- Montgomery : à q = 12289 le Barrett à une étape (5 ops, 2 multiplications)
+  bat un REDC à R = 2¹⁶ (6 ops, 3 multiplications), +5 gas par papillon-mot.
+  Montgomery ne gagnait chez ML-DSA que parce que q = 23 bits impose un
+  Barrett à deux étapes.
+- Le layout packé, le spread de la forme compacte, le produit pointwise
+  replié, les normes SWAR : déjà ici, c'est d'ici qu'ils viennent.
+
+### Changed
+- `foundry.toml` : `solc_version = "0.8.30"`, `via_ir = true`,
+  `optimizer_runs = 1000000` dans les profils `default` et `ci` (`lite`
+  passe en 0.8.30 aussi). Le bytecode déployé de tous les contrats change ;
+  la référence scalaire `ZKNOX_falcon` et `ZKNOX_falcon_fast` perdent 1 à 3 %,
+  ce sont les baselines, pas les produits.
+
 ## [unreleased] — 2026-09-03 — NTT radix-8 fusionnée, sampler Yul, normes SWAR (`ZKNOX_falcon_fused`)
 
 Reprise des idées restantes de fireblocks-labs/evm-ml-dsa-verifier (cca262b)
