@@ -11,6 +11,7 @@ import "../src/ZKNOX_falcon_encodings.sol";
 import "../src/ZKNOX_falcon_fast.sol";
 import "../src/ZKNOX_falcon_turbo.sol";
 import "../src/ZKNOX_falcon_fused.sol";
+import "../src/ZKNOX_falcon8.sol";
 import "../src/ZKNOX_HashToPoint_packed.sol";
 import "../src/ZKNOX_falcon_core_fused.sol";
 import "../src/ZKNOX_shake_fast.sol";
@@ -22,6 +23,7 @@ contract Benchmark is Test {
     ZKNOX_falcon_fast falconFast;
     ZKNOX_falcon_turbo falconTurbo;
     ZKNOX_falcon_fused falconFused;
+    ZKNOX_falcon8 falcon8;
     address f1600Helper;
 
     // forgefmt: disable-next-line
@@ -55,6 +57,15 @@ contract Benchmark is Test {
         falconFast = new ZKNOX_falcon_fast(helper);
         falconTurbo = new ZKNOX_falcon_turbo(helper);
         falconFused = new ZKNOX_falcon_fused(helper);
+        cmds[1] = "test/f1600_resident.hex";
+        runtime = vm.ffi(cmds);
+        initCode = abi.encodePacked(hex"61", uint16(runtime.length), hex"8061000b5f395ff3", runtime);
+        address resident;
+        assembly {
+            resident := create(0, add(initCode, 32), mload(initCode))
+        }
+        require(resident != address(0), "f1600 resident: CREATE failed");
+        falcon8 = new ZKNOX_falcon8(resident);
     }
 
     function testBenchmarkNTT() public view {
@@ -294,6 +305,12 @@ contract Benchmark is Test {
         resultTurbo = falconFused.verify(message, salt, s2, pkc);
         gasUsed3 = gasStart3 - gasleft();
         console.log("Verify NIST FUSED cost:", gasUsed3);
+        assertEq(true, resultTurbo);
+
+        gasStart3 = gasleft();
+        resultTurbo = falcon8.verify(message, salt, s2, pkc);
+        gasUsed3 = gasStart3 - gasleft();
+        console.log("Verify NIST 8-LANE cost:", gasUsed3);
         assertEq(true, resultTurbo);
     }
 

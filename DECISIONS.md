@@ -191,3 +191,38 @@ fusionnées sous via-IR ; 0.8.30 oui.
   la revue.
 - Ce qui reste : 10 permutations Keccak-f pour le hash-to-point sur ce KAT,
   418 k, 58 % du total, plancher du Falcon NIST avec ce helper.
+
+## ADR-005 — Huit lanes de 32 bits avec Montgomery R = 2¹⁶, norme de s1 dans le sampler
+
+**Contexte**
+ADR-004 concluait que Montgomery ne rapportait rien à q = 12289 ; c'était
+vrai sur des lanes de 64 bits (Barrett M40 à 5 ops). La bonne lecture : avec
+R = 2¹⁶ la multiplication de correction tient dans 32 bits, donc huit
+coefficients par mot et moitié moins de papillons-mots dans les couches
+alignées ; et le hash-to-point peut consommer h au fil de l'eau si s1 est
+calculé avant.
+
+**Décision**
+1. Nouvelle chaîne `falconProduct8` (générée, modèle à bornes), sortie < 2q.
+2. Ordre inversé dans `falcon_core8` : s1 d'abord, puis hash-to-point avec
+   la norme accumulée par candidat, acceptation par lots de quatre.
+3. Vérifieur séparé `ZKNOX_falcon8`, même API et même liaison ; `fused`
+   reste mesurable à côté.
+
+**Conséquences**
+- 726 912 → 662 353, 5,90x depuis l'origine, helper froid. Les permutations
+  résidentes, ~405 k, sont 61 % du total.
+- `ZKNOX_falcon8` se lie au wrapper résident du helper (généré par
+  `pythonref/gen_resident_helper.py`, code hash `0x3926a288…`), pas au helper
+  propre de `fused`/`turbo` : un déploiement de plus par chaîne.
+- Le noyau intra-mot est en SWAR : la version scalaire à huit variables de
+  lane coûtait 123,7 k (placement de pile via-IR), la SWAR 106,9 k. Lu dans
+  le bytecode : 520 opcodes par mot, 42 multiplications dont 22
+  incompressibles, sans gras de compilation ; c'est le plancher de cette
+  formulation, pas un poste ouvert.
+- Les lanes répliquées résidentes sont reprises avec un wrapper à nous.
+
+**Attribution**
+Générateur, modèle, code et tests sont à nous. Le corps de permutation
+Keccak-f et la glue SHAKE restent ceux de Fireblocks (MIT) ; le wrapper
+résident est le nôtre autour de ce corps inchangé.

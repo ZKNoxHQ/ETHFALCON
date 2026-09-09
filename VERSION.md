@@ -1,5 +1,139 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-09 — huit lanes de 32 bits, Montgomery R = 2¹⁶, norme repliée dans le sampler (`ZKNOX_falcon8`)
+
+### Measured (`forge test test/Benchmarks.t.sol`, KAT NIST, solc 0.8.30 via-IR, runs 1e6)
+| Vérifieur | gas |
+|---|---:|
+| `ZKNOX_falcon_fused.verify` (quatre lanes, Barrett) | 726 912 |
+| `ZKNOX_falcon8.verify` (huit lanes, Montgomery, norme dans le sampler, lanes résidentes) | **662 353** (−8,9 %) |
+
+Depuis l'origine : 3 910 833 → 662 353, **5,90x**, helper résident froid.
+Runtime `ZKNOX_falcon8` 19 700 octets ; 153/153 tests.
+
+### Added
+- `src/ZKNOX_NTT_falcon8.sol` (GÉNÉRÉ par `pythonref/gen_ntt8.py`, puis
+  `forge fmt`) — `falconProduct8(s2, h)` : s1 = INTT(NTT(s2) ∘ h) sur 64 mots
+  de HUIT lanes de 32 bits, réduction de Montgomery R = 2¹⁶ (−q⁻¹ mod R =
+  12287) : `m = ((x & 0xffff)·12287) & 0xffff`, `r = (x + m·q) >> 16`. Le
+  produit de correction tient dans une lane de 32 bits, là où le Barrett à
+  quatre lanes a besoin de 64 bits pour x·M40 : moitié moins de
+  papillons-mots dans les six couches alignées. Passes A (t = 256, 128, 64,
+  lecture de s2 compact avec spread de huit champs vers huit lanes en trois
+  étapes de masques), B (t = 32, 16, 8), noyau intra-mot scalaire (Barrett
+  M = 21 pour revenir sous 2q, t = 4, 2, 1, produit pointwise par la clé
+  compacte, inverse t = 1, 2, 4), B' (t = 8, 16, 32) et A' (t = 64, 128, 256
+  avec 1/512 replié). Le noyau intra-mot est en SWAR sur le mot packé, sans
+  variable de lane : t = 4, 2, 1 (biais 2q, 2q, 3q), Barrett, produit
+  pointwise par les huit champs de la clé en un seul REDC (les valeurs
+  portent alors un facteur R⁻¹, annulé par les constantes de la dernière
+  couche : sommes × 7510 = 128R mod q, différences × 10323 = inv[1]·128R
+  mod q), inverse t = 1, 2 (biais 5q, 10q), Barrett, t = 4 (2q). Biais aller
+  alignés 2q, 2q, 2q, 3q, 3q, 4q (lanes < 3q, 5q, 7q, 10q, 13q, 17q), sommes
+  inverses maintenues < 4q par soustraction conditionnelle (bit de garde
+  2¹⁷) à chaque couche, sortie < 3q, stockée complémentée (3q + 6144 − s1ᵢ,
+  le terme que le sampler ajoute à chaque candidat). Tables de twiddles en
+  octets big-endian copiées depuis le code, lues par `mload` non aligné.
+  222 314 (aller + inverse à quatre lanes) → **167 296**.
+
+  Les Barrett du noyau : trois au départ, deux après examen. Celui d'avant le
+  produit par la clé tombe avec un biais 2q à la couche t = 1 (lanes < 4q,
+  produit par un champ de 16 bits < 2³² − 2¹⁶q, prouvé par le modèle), au
+  prix de biais 5q et 10q sur l'inverse. Les deux autres sont structurels :
+  après t = 2 (lanes < 28q, le produit suivant déborderait) et avant l'inverse
+  t = 4 (lanes < 20q, même raison). Un REDC réduit un produit ; ramener des
+  sommes lazy sous 2q reste un Barrett à un pas.
+
+  Le premier noyau intra-mot, en scalaires avec huit variables de lane,
+  coûtait 123,7 k des 183 k : trop de variables vivantes pour le placement
+  de pile de via-IR. La version SWAR est à 106,9 k, encore loin des ~30 k que
+  le compte d'opérations annonce ; c'est le poste à reprendre depuis
+  l'assembleur produit (voir « Ce qui reste »).
+- `pythonref/model_ntt8.py` — modèle du schedule, chaque REDC asserte
+  x + m·q < 2³², chaque produit final < q·R, 30 tirages dont les cas saturés,
+  comparé au scalaire.
+- `src/ZKNOX_falcon_core8.sol` — `hashToPointNormS1(salt, msg, helper, s1)` :
+  l'ordre est inversé, s1 d'abord, puis le hash-to-point accumule
+  `((t + 2q + 6144 − s1ᵢ) mod q − 6144)²` à chaque candidat accepté, sans
+  jamais stocker h (un `mod`, une soustraction, un carré en complément à
+  deux). Les quatre candidats d'une lane sont testés d'un coup
+  (`((t & 0x7fff) + 0x0ffb) & t & 0x8000` ≠ 0 ⟺ t ≥ 5q, masques répliqués
+  sur 64 bits) ; quand les quatre passent et qu'il reste quatre places, une
+  seule branche et une seule lecture des quatre lanes de s1 (deux mots si
+  elles chevauchent). `falcon_core8` : range check de s2 puis norme
+  ‖s2‖² + ‖h − s1‖² ≤ sigBound. `ZKNOX_falcon8` : même API, même liaison de
+  helper.
+- `test/ntt8.t.sol` (4) : différentiel du produit contre les transformées à
+  quatre lanes, lanes < 2q assertées, fuzz 256, saturés, clé hors plage ;
+  `test/falcon8.t.sol` (7) : norme repliée contre le hash étendu et la norme
+  scalaire (fuzz 256), décision de `falcon_core8` contre `falcon_core`, KAT
+  (altérations refusées), longueurs, liaison ; bench « Verify NIST 8-LANE ».
+
+### Correction d'ADR-004
+« Montgomery ne vaut rien à q = 12289 » était vrai à quatre lanes de 64 bits
+seulement : avec R = 2¹⁶ le REDC est local à une lane de 32 bits, et c'est ce
+qui permet huit lanes par mot.
+
+- **Lanes répliquées résidentes.** Le corps de permutation du helper
+  travaille sur des mots où chaque lane de 64 bits est copiée quatre fois ;
+  l'interface propre réplique à l'entrée et masque à la sortie, à chaque
+  appel. `ZKNOX_falcon8` garde la forme répliquée entre les appels :
+  absorption par XOR de lanes répliquées (× 0x0001…0001) dans l'état nul,
+  permutation par l'interface de 832 octets (un mot de préfixe ignoré + 25
+  mots répliqués, 25 mots répliqués en retour), sampler qui lit la copie
+  basse (ses masques de byte-swap ont 64 bits, les trois autres copies
+  tombent). Le wrapper résident `test/f1600_resident.hex` (19 417 octets,
+  code hash `0x3926a288…8fb21337` épinglé par le constructeur) est GÉNÉRÉ par
+  `pythonref/gen_resident_helper.py` autour du corps de permutation
+  Fireblocks inchangé (extrait de `f1600_170.hex`, vérifié en ligne droite,
+  sans accès au calldata ni au code ; état en 0x320..0x620, mode en 0x640) :
+  dispatch sur la taille du calldata, 800 octets = interface propre
+  d'origine (réplication à l'entrée, masque à la sortie), 832 = résidente,
+  toute autre taille revert. Testé contre le helper d'origine par les deux
+  interfaces sur 16 états aléatoires, les 25 lanes. Le helper propre reste
+  celui de `fused` et `turbo`. −5,3 k à helper égal.
+
+### Non repris (mesuré ou évalué)
+- Norme de s2 sur huit lanes de 32 bits (A·rev(A)) : compté plus cher que
+  notre version à seize champs de 16 bits (11,7 k), gardée.
+- Premier essai de lecture groupée des lanes de s1 limité aux lots alignés
+  (i mod 8 ≤ 4) : +12 k, le repli par candidat après un rejet reste
+  désaligné longtemps ; la version à deux mots l'a remplacé (−10 k).
+
+### Le noyau intra-mot, lu dans le bytecode
+Le corps de boucle compilé (désassemblage de `out/ZKNOX_falcon8.sol/
+ZKNOX_falcon8.json`, la boucle repérée par ses trois multiplications par 21)
+fait **520 opcodes par mot, 1 647 gas estimés, 105 k sur 64 mots** : 42 MUL
+(22 produits par twiddle ou par la clé, 14 dans les sept REDC, 6 dans les
+trois Barrett), 71 AND, 35 SHR, 35 ADD, 24 OR, 8 MLOAD, aucun store
+intermédiaire, aucune constante recopiée. Pas de gras de compilation : c'est
+le coût de la formulation SWAR elle-même, où chaque opération Yul en vaut
+~2,5 en opcodes (masques, DUP, SWAP). Le « ~30 k » annoncé comptait les
+opérations Yul, pas les opcodes ; le plancher de cette formulation est ~100 k,
+et les 22 multiplications sont incompressibles (huit pour le produit par la
+clé, quatorze pour six couches de papillons sur huit lanes). Déplacer le
+Barrett d'entrée après t = 2 (biais 5q, 6q) est neutre au gas près, gardé
+parce que le schedule est plus lâche.
+
+### Ce qui reste
+- Le sampler à norme repliée : ~40 k de glue hors permutations. Repris :
+  lanes de s1 complémentées à la source, les quatre candidats d'un lot
+  étalés à 32 bits et ajoutés aux quatre lanes en une addition, chemin sans
+  tests de borne pour les blocs qui ne peuvent pas atteindre 512 (départ
+  < 445). −6 k sur le verify (671 313 → 665 118). Ce qui reste est par
+  lane (byte-swap, test d'acceptation, lecture et étalement d'un lot, ~60
+  opérations) et par coefficient (`mod`, centrage, carré, ~6) ; les
+  variantes SWAR essayées sur papier (Barrett à quatre lanes plus
+  correction, carrés par A·rev(A)) comptent à égalité, non faites.
+  Plancher estimé ~35 k.
+- Les permutations : le corps Fireblocks est au minimum arithmétique de
+  Keccak-f (200 opérations par tour pour 206 théoriques, complément de
+  lanes compris) ; 54 % de son coût est la machine à pile (156 accès mémoire
+  et 154 DUP/SWAP par tour). Un générateur Keccak-f à ordonnancement
+  optimisé vaudrait 10 à 15 %, c'est un projet ; le precompile (EIP-8052)
+  est la vraie issue.
+- Les permutations, 418 k, 62 % du total.
+
 ## [unreleased] — 2026-09-05 — profil de compilation : solc 0.8.30, via-IR, `optimizer_runs = 1000000`
 
 ### Measured (`forge test test/Benchmarks.t.sol`, vecteur KAT NIST)
