@@ -14,11 +14,11 @@ contract ZKNOX_falcon8 {
     ///         21,622 bytes, fireblocks-labs/evm-ml-dsa-verifier @ cca262b).
     /// @dev    See ZKNOX_falcon_turbo: the binding is by code hash, not address,
     ///         so that what SHAKE256 means here is fixed by this source.
-    /// @dev our Keccak-f[1600] helper (test/f1600_zknox.hex, 19,515 bytes, generated
-    ///      by pythonref/gen_keccak_helper.py): 832 bytes = ignored prefix word + 25
-    ///      replicated lanes in, 25 replicated lanes out; 800 bytes = 25 clean lanes
-    ///      in and out
-    bytes32 internal constant F1600_CODEHASH = 0xdc6a16b17b7f87655cecf5c8cb5c3357c35ce17b25f9050c185ee5862c237442;
+    /// @dev our Keccak-f[1600] helper (test/f1600_zknox.hex, 23,846 bytes, generated
+    ///      by pythonref/gen_keccak_helper.py): 801 bytes = 25 replicated lanes (+ one
+    ///      ignored byte) in, 25 replicated lanes out; 800 bytes = 25 clean lanes in
+    ///      and out; any other length = SHAKE256 of the calldata, 136 bytes out
+    bytes32 internal constant F1600_CODEHASH = 0x661c9f13236c0174873874530946d802d0ac54373091f0bdea36ab2e3f409155;
 
     function F1600_CODEHASH_PUBLIC() external pure returns (bytes32) {
         return F1600_CODEHASH;

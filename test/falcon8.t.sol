@@ -57,30 +57,36 @@ contract Falcon8Test is Test {
     function test_resident_helper_matches_original() public view {
         assertEq(residentHelper.codehash, falcon8.F1600_CODEHASH_PUBLIC());
         for (uint256 trial = 0; trial < 16; trial++) {
-            uint256[26] memory buf;
+            uint256[25] memory buf;
             uint256[25] memory st;
             uint256[25] memory clean;
             for (uint256 k = 0; k < 25; k++) {
                 uint256 lane = uint256(keccak256(abi.encode(trial, k))) & 0xffffffffffffffff;
                 st[k] = lane;
                 clean[k] = lane;
-                buf[k + 1] = lane * _REP4;
+                buf[k] = lane * _REP4;
             }
             f1600Fast170(st, f1600Helper);
             uint256 p;
             assembly {
-                p := add(buf, 32)
+                p := buf
             }
             _f1600Resident(p, residentHelper);
             f1600Fast170(clean, residentHelper);
             for (uint256 k = 0; k < 25; k++) {
-                assertEq(buf[k + 1], st[k] * _REP4, "resident lane differs");
+                assertEq(buf[k], st[k] * _REP4, "resident lane differs");
                 assertEq(clean[k], st[k], "clean lane differs");
             }
+            // SHAKE256 interface: the first 136 bytes of shake256Fast over a random message
+            bytes memory msg_ = abi.encodePacked(keccak256(abi.encode(trial)), uint8(trial));
+            (bool okS, bytes memory outS) = residentHelper.staticcall(msg_);
+            assertTrue(okS && outS.length == 136, "sponge interface");
+            assertEq(outS, shake256Fast(msg_, 136, f1600Helper), "SHAKE256 differs");
         }
-        // other lengths revert
-        (bool ok,) = residentHelper.staticcall(new bytes(801));
-        assertFalse(ok);
+        // 800 and 801 are the permutation interfaces; 832 is a message
+        (bool okM, bytes memory outM) = residentHelper.staticcall(new bytes(832));
+        assertTrue(okM && outM.length == 136);
+        assertEq(outM, shake256Fast(new bytes(832), 136, f1600Helper));
     }
 
     function _katS2() internal pure returns (uint256[] memory s2) {

@@ -6,7 +6,8 @@
 # with the same two calldata interfaces as test/f1600_resident.hex:
 #
 #   800 bytes  25 clean lanes in, 25 clean lanes out
-#   832 bytes  ignored prefix word + 25 replicated lanes in, replicated out
+#   801 bytes  25 replicated lanes (+ one ignored byte) in, replicated out
+#   other      SHAKE256 of the calldata, first 136 bytes of output
 #
 # The 24 rounds are straight-line. The state lives in memory (two buffers,
 # read from one and written to the other each round); the column parities,
@@ -37,7 +38,6 @@ M64 = 0xFFFFFFFFFFFFFFFF
 
 S0 = 0x320  # 25 words
 S1 = 0x660
-MODE = 0x9A0  # 1 = clean interface (mask on exit)
 
 RHO4 = os.environ.get("RHO4", "1") == "1"
 LC = os.environ.get("LC", "1") == "1"
@@ -99,6 +99,61 @@ class Emit:
 
     def _op(self, b):
         self.code.append(b)
+
+    # code labels: PUSH2 placeholders patched once every label is placed
+    labels = {}
+    fixups = []
+
+    def label(self, name):
+        self.labels[name] = len(self.code)
+        self._op(0x5B)
+
+    def push_label(self, name):
+        self._op(0x61)
+        self.fixups.append((len(self.code), name))
+        self.code += b"\0\0"
+        self.stack.append("#")
+
+    def patch(self):
+        for pos, name in self.fixups:
+            off = self.labels[name]
+            assert self.code[off] == 0x5B
+            self.code[pos] = off >> 8
+            self.code[pos + 1] = off & 0xFF
+
+    def jump(self, name):
+        self.push_label(name)
+        self._op(0x56)
+        self.stack.pop()
+
+    def jumpi(self, name):
+        """consumes the condition on top"""
+        self.push_label(name)
+        self._op(0x57)
+        self.stack.pop()
+        self.stack.pop()
+
+    def call_body(self, ret):
+        self.push_label(ret)
+        self.jump("BODY")
+        self.stack.pop()  # the body consumes the return address when it jumps back
+        self.label(ret)
+
+    def grev(self):
+        """top := its bytes reversed within each 64-bit group"""
+        for mask, s in ((0xFF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00FF00, 8), (0xFFFF0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF0000FFFF0000, 16), (0xFFFFFFFF00000000FFFFFFFF00000000FFFFFFFF00000000FFFFFFFF00000000, 32)):
+            w = self.stack[-1]
+            self.dup(w)
+            self.push(mask)
+            self.binop(0x16, "a")
+            self.dup("a")
+            self.push(s)
+            self.binop(0x1C, "hi")
+            self.swap_to_top(w)
+            self.binop(0x18, "x")
+            self.push(s)
+            self.binop(0x1B, "lo")
+            self.binop(0x17, w)
 
     def push(self, v):
         if v == 0:
@@ -278,39 +333,18 @@ def keccak_round(e, rnd, src, dst, rerep_now):
         assert all(v == 0 for v in uses.values())
     for x in range(5):
         e.pop()
-    assert e.stack == (["K64", "KREP"] if RHO4 else []), e.stack
+    assert e.stack == (["ret", "K64", "KREP"] if RHO4 else ["ret"]), e.stack
 
 
-def build():
-    e = Emit()
-    # dispatch: 832 -> resident, 800 -> clean, else revert
-    e.code += bytes([0x36, 0x61, 0x03, 0x40, 0x14, 0x61, 0x00, 0x00, 0x57])  # patched below
-    p_res = len(e.code) - 3
-    e.code += bytes([0x36, 0x61, 0x03, 0x20, 0x14, 0x61, 0x00, 0x00, 0x57])
-    p_clean = len(e.code) - 3
-    e.code += bytes([0x5F, 0x5F, 0xFD])
-    # clean: copy, replicate, mode = 1
-    off_clean = len(e.code)
-    e.code += bytes([0x5B]) + bytes([0x61, 0x03, 0x20, 0x5F, 0x61, 0x03, 0x20, 0x37])
-    e.code += bytes([0x78]) + REP4.to_bytes(25, "big")
-    for k in range(25):
-        a = S0 + 32 * k
-        e.code += bytes([0x61, a >> 8, a & 0xFF, 0x51, 0x81, 0x02, 0x61, a >> 8, a & 0xFF, 0x52])
-    e.code += bytes([0x50, 0x60, 0x01, 0x61, MODE >> 8, MODE & 0xFF, 0x52])
-    e.code += bytes([0x61, 0x00, 0x00, 0x56])
-    p_body = len(e.code) - 3
-    # resident: copy from calldata offset 32
-    off_res = len(e.code)
-    e.code += bytes([0x5B]) + bytes([0x61, 0x03, 0x20, 0x60, 0x20, 0x61, 0x03, 0x20, 0x37])
-    # body
-    off_body = len(e.code)
-    e.code += bytes([0x5B])
-    for i in LC_LANES:
-        e.mload(S0 + 32 * i, "v")
-        e.unop(0x19, "v")
-        e.mstore(S0 + 32 * i)
+SCR = 0x9C0  # 136-byte block scratch (5 words)
+OUT = 0xAC0  # squeeze output (5 words)
+
+
+def emit_body(e):
+    """the 24 rounds on the (complemented) state at S0; return address on the stack"""
+    e.label("BODY")
+    e.stack.append("ret")
     if RHO4:
-        # the re-replication constants stay on the stack for the whole body
         e.push(M64)
         e.stack[-1] = "K64"
         e.push(REP4)
@@ -322,24 +356,111 @@ def build():
     if RHO4:
         e.pop()
         e.pop()
-    for i in LC_LANES:
+    assert e.stack == ["ret"], e.stack
+    e._op(0x56)
+    e.stack.pop()
+
+
+def complement(e, lanes=LC_LANES):
+    for i in lanes:
         e.mload(S0 + 32 * i, "v")
         e.unop(0x19, "v")
         e.mstore(S0 + 32 * i)
-    # exit: mask iff mode
-    e.code += bytes([0x61, MODE >> 8, MODE & 0xFF, 0x51, 0x15, 0x61, 0x00, 0x00, 0x57])
-    p_exit = len(e.code) - 3
-    e.code += bytes([0x67]) + M64.to_bytes(8, "big")
+
+
+def absorb_block(e):
+    """XOR the 136 bytes at SCR (little-endian lanes) into the replicated state"""
+    for k in range(5):
+        e.mload(SCR + 32 * k, "w")
+        e.grev()
+        for m in range(4 if k < 4 else 1):
+            j = 4 * k + m
+            e.dup("w")
+            if m < 3:
+                e.push(192 - 64 * m)
+                e.binop(0x1C, "l")
+            e.push(M64)
+            e.binop(0x16, "l")
+            e.push(REP4)
+            e.binop(0x02, "l")
+            e.mload(S0 + 32 * j, "s")
+            e.binop(0x18, "s")
+            e.mstore(S0 + 32 * j)
+        e.pop()
+
+
+def build():
+    e = Emit()
+    e.labels, e.fixups = {}, []
+    # dispatch: 801 -> resident permutation (25 replicated lanes + one ignored
+    # byte, so that no 32-byte-aligned message length collides), 800 -> clean
+    # permutation, else SHAKE256 of the calldata
+    e._op(0x36); e.stack.append("n")
+    e.push(801); e.binop(0x14, "c"); e.jumpi("RES")
+    e._op(0x36); e.stack.append("n")
+    e.push(800); e.binop(0x14, "c"); e.jumpi("CLEAN")
+    # ---- SHAKE256(calldata), first 136 bytes of output ----------------------
+    # state = zero, pattern lanes complemented (all ones)
+    for i in LC_LANES:
+        e.push(0); e.unop(0x19, "v"); e.mstore(S0 + 32 * i)
+    e.push(0); e.stack[-1] = "off"
+    e._op(0x36); e.stack.append("rem")
+    e.label("LOOP")
+    e.dup("rem"); e.push(136); e.binop(0x11, "c")  # 136 > rem
+    e.jumpi("LAST")
+    e.push(136); e.dup("off"); e.push(SCR); e._op(0x37); e.stack.pop(); e.stack.pop(); e.stack.pop()
+    absorb_block(e)
+    e.call_body("R1")
+    # off += 136 ; rem -= 136
+    e.swap_to_top("off"); e.push(136); e.binop(0x01, "off"); e.swap_to_top("rem")
+    e.push(136); e.swap_to_top("rem"); e.binop(0x03, "rem")
+    e.jump("LOOP")
+    e.label("LAST")
+    # last block: rem bytes (zero-padded by CALLDATACOPY), 0x1f at rem, 0x80 on byte 135
+    e.push(136); e.dup("off"); e.push(SCR); e._op(0x37); e.stack.pop(); e.stack.pop(); e.stack.pop()
+    e.push(0x1F); e.dup("rem"); e.push(SCR); e.binop(0x01, "p"); e._op(0x53); e.stack.pop(); e.stack.pop()
+    e.mload(SCR + 104, "t"); e.push(0x80); e.binop(0x17, "t"); e.mstore(SCR + 104)
+    e.pop(); e.pop()
+    absorb_block(e)
+    e.call_body("R2")
+    complement(e, [i for i in LC_LANES if i < 17])
+    # squeeze: lanes 4k..4k+3 into output word k, bytes reversed within each lane
+    for k in range(5):
+        for m in range(4 if k < 4 else 1):
+            e.mload(S0 + 32 * (4 * k + m), "l")
+            e.push(M64); e.binop(0x16, "l")
+            if m < 3:
+                e.push(192 - 64 * m); e.binop(0x1B, "l")
+            if m > 0:
+                e.binop(0x17, "l")
+        e.grev()
+        e.mstore(OUT + 32 * k)
+    e.push(136); e.push(OUT); e._op(0xF3); e.stack.clear()
+    # ---- clean permutation ----------------------------------------------------
+    e.label("CLEAN")
+    e.push(800); e.push(0); e.push(S0); e._op(0x37); e.stack.pop(); e.stack.pop(); e.stack.pop()
+    e.push(REP4); e.stack[-1] = "K"
     for k in range(25):
-        a = S0 + 32 * k
-        e.code += bytes([0x61, a >> 8, a & 0xFF, 0x51, 0x81, 0x16, 0x61, a >> 8, a & 0xFF, 0x52])
-    e.code += bytes([0x50])
-    off_exit = len(e.code)
-    e.code += bytes([0x5B, 0x61, 0x03, 0x20, 0x61, 0x03, 0x20, 0xF3])
-    for p, off in ((p_res, off_res), (p_clean, off_clean), (p_body, off_body), (p_exit, off_exit)):
-        assert e.code[off] == 0x5B
-        e.code[p] = off >> 8
-        e.code[p + 1] = off & 0xFF
+        e.mload(S0 + 32 * k, "v"); e.dup("K"); e.binop(0x02, "v"); e.mstore(S0 + 32 * k)
+    e.pop()
+    complement(e)
+    e.call_body("R3")
+    complement(e)
+    e.push(M64); e.stack[-1] = "K"
+    for k in range(25):
+        e.mload(S0 + 32 * k, "v"); e.dup("K"); e.binop(0x16, "v"); e.mstore(S0 + 32 * k)
+    e.pop()
+    e.push(800); e.push(S0); e._op(0xF3); e.stack.clear()
+    # ---- resident permutation -------------------------------------------------
+    e.label("RES")
+    e.push(800); e.push(0); e.push(S0); e._op(0x37); e.stack.pop(); e.stack.pop(); e.stack.pop()
+    complement(e)
+    e.call_body("R4")
+    complement(e)
+    e.push(800); e.push(S0); e._op(0xF3); e.stack.clear()
+    # ---- the permutation body -------------------------------------------------
+    emit_body(e)
+    e.patch()
     return bytes(e.code), e.max_depth
 
 

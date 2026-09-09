@@ -247,10 +247,12 @@ contre une référence Python sur un mini-EVM qui compte le gas
 (`pythonref/check_keccak_helper.py`). Rotations ρ à quatre opcodes avec
 re-réplication programmée, complément de lanes par un motif trouvé par
 recherche exhaustive, consommation en place des opérandes. 39 974 gas par
-permutation contre 40 448 ; `ZKNOX_falcon8` 654 611 → 650 345.
+permutation contre 40 448 ; `ZKNOX_falcon8` 654 611 → 650 210. Le helper
+porte aussi l'entrée éponge (SHAKE256 du calldata, 136 octets en sortie)
+pour qu'ETHDILITHIUM l'utilise tel quel.
 
 **Conséquences**
-- Le helper NIST de `falcon8` est le nôtre (code hash `0xdc6a16b1…`), à
+- Le helper NIST de `falcon8` est le nôtre (code hash `0x661c9f13…`), à
   déployer depuis `test/f1600_zknox.hex` comme l'ancien ; `fused` et `turbo`
   restent sur le helper Fireblocks d'origine.
 - Le gain est de 1,2 % par permutation : la conclusion d'ADR-005 tient, le

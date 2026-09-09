@@ -72,8 +72,16 @@ def run(code, calldata):
             stack.pop(); gas += 2
         elif op == 0x01:
             stack.append((stack.pop() + stack.pop()) & MASK); gas += 3
+        elif op == 0x03:
+            a, b = stack.pop(), stack.pop(); stack.append((a - b) & MASK); gas += 3
+        elif op == 0x53:
+            a, v = stack.pop(), stack.pop(); expand(a + 1); mem[a] = v & 0xFF; gas += 3
         elif op == 0x02:
             stack.append((stack.pop() * stack.pop()) & MASK); gas += 5
+        elif op == 0x10:
+            a, b = stack.pop(), stack.pop(); stack.append(1 if a < b else 0); gas += 3
+        elif op == 0x11:
+            a, b = stack.pop(), stack.pop(); stack.append(1 if a > b else 0); gas += 3
         elif op == 0x14:
             stack.append(1 if stack.pop() == stack.pop() else 0); gas += 3
         elif op == 0x15:
@@ -130,12 +138,18 @@ def check(path, trials=8, seed=1):
         assert out is not None and len(out) == 800, "clean call failed"
         got = [int.from_bytes(out[32 * k : 32 * k + 32], "big") for k in range(25)]
         assert got == exp, f"clean interface mismatch (trial {t})"
-        out, gas_res = run(code, b"\0" * 32 + b"".join(((v * REP4) & MASK).to_bytes(32, "big") for v in st))
+        out, gas_res = run(code, b"".join(((v * REP4) & MASK).to_bytes(32, "big") for v in st) + b"\0")
         assert out is not None and len(out) == 800, "resident call failed"
         got = [int.from_bytes(out[32 * k : 32 * k + 32], "big") for k in range(25)]
         assert got == [(v * REP4) & MASK for v in exp], f"resident interface mismatch (trial {t})"
-    out, _ = run(code, b"\0" * 801)
-    assert out is None, "801 bytes should revert"
+    # SHAKE256 interface: any other length, first 136 bytes of the output
+    import hashlib
+    for n in (0, 1, 31, 98, 135, 136, 137, 271, 272, 832, 1000):
+        msg = bytes(rng.getrandbits(8) for _ in range(n))
+        out, gas_sh = run(code, msg)
+        assert out is not None and len(out) == 136, f"sponge call failed for {n} bytes"
+        assert out == hashlib.shake_256(msg).digest(136), f"SHAKE256 mismatch for {n} bytes"
+    print(f"  SHAKE256 OK for 12 lengths; gas for 832 bytes of input (7 permutations) {run(code, bytes(832))[1]}")
     print(f"{path}: {len(code)} bytes, OK on {trials} states; gas clean {gas_clean}, resident {gas_res}")
 
 

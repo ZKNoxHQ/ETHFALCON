@@ -7,14 +7,19 @@
 |---|---:|
 | helper Fireblocks, wrapper résident, une permutation | 40 448 |
 | **notre helper, interface résidente, une permutation** | **39 974** (−1,2 %) |
-| `ZKNOX_falcon8.verify`, KAT NIST, helper froid | 654 611 → **650 345** |
+| `ZKNOX_falcon8.verify`, KAT NIST, helper froid | 654 611 → **650 210** |
 
-5,99x depuis l'origine. 153/153 tests ; helper de 19 515 octets, code hash
-`0xdc6a16b1…2c237442`, mêmes deux interfaces que le wrapper précédent (800
-octets propre, 832 résidente), vérifié contre le helper Fireblocks par les
-deux interfaces sur 16 états aléatoires (forge) et contre une référence
-Python sur un mini-EVM (`pythonref/check_keccak_helper.py`, qui compte aussi
-le gas : 40 448 pour le wrapper Fireblocks, à 6 gas près de la mesure forge).
+5,99x depuis l'origine. 153/153 tests ; helper de 23 846 octets, code hash
+`0x661c9f13…3f409155`, trois interfaces : 800 octets = permutation sur 25
+lanes propres, **801** = permutation sur 25 lanes répliquées (un octet ignoré
+en plus, pour qu'aucune longueur de message alignée sur 32 octets ne
+collisionne, l'entrée du hash final de ML-DSA faisant 832 octets), toute
+autre longueur = SHAKE256 du calldata, 136 octets en sortie (l'entrée
+groupée qu'utilise ETHDILITHIUM). Vérifié contre le helper Fireblocks par les
+trois interfaces (forge : 16 états aléatoires, messages aléatoires) et contre
+une référence Python sur un mini-EVM (`pythonref/check_keccak_helper.py`, qui
+compte aussi le gas : 40 448 pour le wrapper Fireblocks, à 6 gas près de la
+mesure forge ; 12 longueurs de message contre `hashlib.shake_256`).
 
 ### Le générateur (`pythonref/gen_keccak_helper.py`)
 Même forme « Q » que Fireblocks (quatre copies de chaque lane de 64 bits par
@@ -55,8 +60,13 @@ est de la pile.
   complémentée », ~−130 gas par appel) : lie le sampler au motif du helper.
 
 ### Changed
-- `ZKNOX_falcon8` se lie à `test/f1600_zknox.hex` ; `test/f1600_resident.hex`
-  et `pythonref/gen_resident_helper.py` retirés (remplacés).
+- `ZKNOX_falcon8` se lie à `test/f1600_zknox.hex` et appelle la permutation
+  résidente par `(st, 801)` ; `test/f1600_resident.hex` et
+  `pythonref/gen_resident_helper.py` retirés (remplacés).
+- La partie éponge du helper (absorption bloc par bloc avec inversion
+  d'octets par lane, padding 0x1f/0x80, pression de 136 octets) est écrite
+  dans le générateur ; le corps de permutation est un sous-programme appelé
+  par les trois interfaces.
 
 ## [unreleased] — 2026-09-09 — huit lanes de 32 bits, Montgomery R = 2¹⁶, norme repliée dans le sampler (`ZKNOX_falcon8`)
 
