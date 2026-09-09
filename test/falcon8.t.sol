@@ -45,7 +45,7 @@ contract Falcon8Test is Test {
 
     function setUp() public {
         f1600Helper = _deploy("test/f1600_170.hex");
-        residentHelper = _deploy("test/f1600_resident.hex");
+        residentHelper = _deploy("test/f1600_zknox.hex");
         falconTurbo = new ZKNOX_falcon_turbo(f1600Helper);
         falconFused = new ZKNOX_falcon_fused(f1600Helper);
         falcon8 = new ZKNOX_falcon8(residentHelper);

@@ -57,7 +57,7 @@ contract Benchmark is Test {
         falconFast = new ZKNOX_falcon_fast(helper);
         falconTurbo = new ZKNOX_falcon_turbo(helper);
         falconFused = new ZKNOX_falcon_fused(helper);
-        cmds[1] = "test/f1600_resident.hex";
+        cmds[1] = "test/f1600_zknox.hex";
         runtime = vm.ffi(cmds);
         initCode = abi.encodePacked(hex"61", uint16(runtime.length), hex"8061000b5f395ff3", runtime);
         address resident;

@@ -232,3 +232,31 @@ calculé avant.
 Générateur, modèle, code et tests sont à nous. Le corps de permutation
 Keccak-f et la glue SHAKE restent ceux de Fireblocks (MIT) ; le wrapper
 résident est le nôtre autour de ce corps inchangé.
+
+## ADR-006 — Notre permutation Keccak-f[1600]
+
+**Contexte**
+Les permutations sont 61 % du verify Falcon NIST. Le corps Fireblocks est
+au minimum arithmétique de Keccak-f (200 opérations par tour pour 206
+théoriques) ; la marge est dans la machine à pile.
+
+**Décision**
+Un générateur à nous (`pythonref/gen_keccak_helper.py`), même forme « Q »,
+même double interface, validé contre Fireblocks sur les deux interfaces et
+contre une référence Python sur un mini-EVM qui compte le gas
+(`pythonref/check_keccak_helper.py`). Rotations ρ à quatre opcodes avec
+re-réplication programmée, complément de lanes par un motif trouvé par
+recherche exhaustive, consommation en place des opérandes. 39 974 gas par
+permutation contre 40 448 ; `ZKNOX_falcon8` 654 611 → 650 345.
+
+**Conséquences**
+- Le helper NIST de `falcon8` est le nôtre (code hash `0xdc6a16b1…`), à
+  déployer depuis `test/f1600_zknox.hex` comme l'ancien ; `fused` et `turbo`
+  restent sur le helper Fireblocks d'origine.
+- Le gain est de 1,2 % par permutation : la conclusion d'ADR-005 tient, le
+  vrai saut est le precompile (EIP-8052). Le générateur et le mini-EVM sont
+  l'outillage pour continuer à tourner autour de la pile si on le veut.
+
+**Attribution**
+Fireblocks pour la forme Q et la glue SHAKE (MIT) ; générateur, motif de
+complément, ordonnancement et vérificateur à nous.

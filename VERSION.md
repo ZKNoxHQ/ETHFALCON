@@ -1,5 +1,63 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-09 — notre permutation Keccak-f[1600] (`test/f1600_zknox.hex`)
+
+### Measured
+| | gas |
+|---|---:|
+| helper Fireblocks, wrapper résident, une permutation | 40 448 |
+| **notre helper, interface résidente, une permutation** | **39 974** (−1,2 %) |
+| `ZKNOX_falcon8.verify`, KAT NIST, helper froid | 654 611 → **650 345** |
+
+5,99x depuis l'origine. 153/153 tests ; helper de 19 515 octets, code hash
+`0xdc6a16b1…2c237442`, mêmes deux interfaces que le wrapper précédent (800
+octets propre, 832 résidente), vérifié contre le helper Fireblocks par les
+deux interfaces sur 16 états aléatoires (forge) et contre une référence
+Python sur un mini-EVM (`pythonref/check_keccak_helper.py`, qui compte aussi
+le gas : 40 448 pour le wrapper Fireblocks, à 6 gas près de la mesure forge).
+
+### Le générateur (`pythonref/gen_keccak_helper.py`)
+Même forme « Q » que Fireblocks (quatre copies de chaque lane de 64 bits par
+mot de 256, état en mémoire, 24 tours en ligne droite) ; les choix qui font
+la différence, tous mesurés sur le mini-EVM :
+- **Rotations ρ à quatre opcodes** `shr(64, shl(r, X))` au lieu de sept
+  (`or(shl(r, X), shr(64 − r, X))` demande X deux fois : DUP, SWAP, OR). Le
+  prix : une copie valide perdue par tour. Les 25 lanes sont re-répliquées
+  (`mul(and(x, 2⁶⁴ − 1), REP4)`, constantes gardées sur la pile pendant tout
+  le corps) tous les trois tours, dans les stores de χ, et les cinq mots θ le
+  sont à chaque tour, pour que le chemin θ n'emporte jamais de déchets dans
+  les lanes. Une tentative avec ρ à quatre opcodes et θ à sept : re-réplication
+  tous les deux tours, plus chère.
+- **Complément de lanes** : les lanes 0, 5, 8, 14, 16, 20 sont stockées
+  complémentées ; ce motif, point fixe du tour sur les drapeaux de complément
+  trouvé par recherche exhaustive sur les 2²⁵ motifs, ramène χ de 25 NOT par
+  tour à 7 (le motif XKCP de mémoire n'était pas un point fixe dans ce
+  modèle). Complément à l'entrée, décomplément à la sortie.
+- **Consommation en place** : dans χ (chaque lane de ligne sert trois fois)
+  et dans θ (chaque parité de colonne deux fois), la dernière utilisation
+  consomme l'opérande quand il est là où l'opération le prend (sommet pour
+  NOT, sous le sommet pour AND/OR/XOR), sinon DUP ; ordres des sorties de χ
+  et des mots θ choisis par recherche (120 + 120 ordres).
+- Un suiveur de pile symbolique émet les DUP/SWAP et refuse toute profondeur
+  au-delà de 16 (profondeur maximale utilisée : 13).
+
+Par tour : 141 PUSH, 125 DUP, 76 XOR, 53 MLOAD, 29 SHL, 29 SHR, 28 AND, 28
+MSTORE, 19 POP, 15 OR, 13 MUL, 10 SWAP, 7 NOT. Fireblocks : 137 PUSH, 107
+DUP, 48 SWAP, 38 OR, 17 AND, 1 MUL, 8 NOT, le reste égal. Le gain net est
+mince parce que l'arithmétique est au minimum des deux côtés ; ce qui reste
+est de la pile.
+
+### Non fait
+- Accumuler les parités de colonnes du tour suivant pendant les stores de χ
+  (−25 chargements par tour) : il faudrait cinq accumulateurs de plus sur la
+  pile, 19 valeurs vives avec les mots θ et les lanes de ligne.
+- Garder l'état complémenté entre les appels (interface « résidente
+  complémentée », ~−130 gas par appel) : lie le sampler au motif du helper.
+
+### Changed
+- `ZKNOX_falcon8` se lie à `test/f1600_zknox.hex` ; `test/f1600_resident.hex`
+  et `pythonref/gen_resident_helper.py` retirés (remplacés).
+
 ## [unreleased] — 2026-09-09 — huit lanes de 32 bits, Montgomery R = 2¹⁶, norme repliée dans le sampler (`ZKNOX_falcon8`)
 
 ### Measured (`forge test test/Benchmarks.t.sol`, KAT NIST, solc 0.8.30 via-IR, runs 1e6)
