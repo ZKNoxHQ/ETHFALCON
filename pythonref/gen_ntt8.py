@@ -228,8 +228,15 @@ def tw16(off):
 
 
 fwA = {"S1": hex(mont(FW[1])), "S2a": hex(mont(FW[2])), "S2b": hex(mont(FW[3])), "S3": [hex(mont(FW[4 + k])) for k in range(4)]}
-fwB = {"S1": tw16("add(16, shl(1, b))"), "S2a": tw16("add(32, shl(2, b))"), "S2b": tw16("add(34, shl(2, b))"), "S3": [tw16(f"add({64 + 2 * k}, shl(3, b))") for k in range(4)]}
-invB = {"S1": tw16("add(16, shl(1, b))"), "S2a": tw16("add(32, shl(2, b))"), "S2b": tw16("add(34, shl(2, b))"), "S3": [tw16(f"add({64 + 2 * k}, shl(3, b))") for k in range(4)]}
+def twp(ptr, off=0):
+    """a 16-bit table entry at a running pointer (plus a small constant offset)"""
+    src = ptr if off == 0 else f"add({ptr}, {off})"
+    return f"and(shr(240, mload({src})), 0xffff)"
+
+
+# t1 -> entry 8+b (2 bytes per octet), t2 -> entries 16+2b, 17+2b (4 bytes), t3 -> entries 32+4b.. (8 bytes)
+fwB = {"S1": twp("t1"), "S2a": twp("t2"), "S2b": twp("t2", 2), "S3": [twp("t3", 2 * k) for k in range(4)]}
+invB = fwB
 invA = {"S1": "0", "S2a": hex(mont(INV[2])), "S2b": hex(mont(INV[3])), "S3": [hex(mont(INV[4 + k])) for k in range(4)]}
 
 
@@ -248,14 +255,14 @@ def inword():
     L = ["let W := mload(p)"]
     # forward t = 4 straight from lanes < 17q (bias 5q): lanes 4..7 against 0..3, twiddle fw[64+w] at byte 128+2w
     L += [
-        "let V := mul(shr(128, W), and(shr(240, mload(add(tb, add(128, shl(1, w))))), 0xffff))",
+        "let V := mul(shr(128, W), and(shr(240, mload(t1)), 0xffff))",
         RED("V"),
         "let lo := and(W, _LO128)",
         "W := or(add(lo, V), shl(128, sub(add(lo, _Q5LO), V)))",
     ]
     # t = 2 (bias 6q): lanes (2,3)->(0,1) with fw[128+2w], (6,7)->(4,5) with fw[129+2w]; the two fields at byte 256+4w
     L += [
-        "V := shr(224, mload(add(tb, add(256, shl(2, w)))))",
+        "V := shr(224, mload(t2))",
         "lo := and(shr(64, W), _M0145)",
         "V := or(and(mul(lo, shr(16, V)), _M01), and(mul(lo, and(V, 0xffff)), _M45))",
         RED("V"),
@@ -265,7 +272,7 @@ def inword():
     ]
     # t = 1: lanes (1,3,5,7)->(0,2,4,6) with fw[256+4w+k], four fields at byte 512+8w
     L += [
-        "V := shr(192, mload(add(tb, add(512, shl(3, w)))))",
+        "V := shr(192, mload(t3))",
         "lo := and(shr(32, W), _M0246)",
         "V := or(or(and(mul(lo, shr(48, V)), _LN0), and(mul(lo, and(shr(32, V), 0xffff)), _LN2)), or(and(mul(lo, and(shr(16, V), 0xffff)), _LN4), and(mul(lo, and(V, 0xffff)), _LN6)))",
         RED("V"),
@@ -273,12 +280,12 @@ def inword():
         "W := or(add(lo, V), shl(32, sub(add(lo, _Q2_0246), V)))",
     ]
     # pointwise straight from lanes < 4q, by the eight key fields of half (w & 1) of compact key word w >> 1
-    L += ["V := shr(shl(7, and(w, 1)), mload(add(pk, add(32, shl(5, shr(1, w))))))"]
+    L += ["V := shr(ks, mload(kp))"]
     terms = [f"and(mul(W, {'and(V, 0xffff)' if j == 0 else f'and(shr({16 * j}, V), 0xffff)'}), _LN{j})" for j in range(8)]
     L += [f"W := or(or(or({terms[0]}, {terms[1]}), or({terms[2]}, {terms[3]})), or(or({terms[4]}, {terms[5]}), or({terms[6]}, {terms[7]})))", RED("W")]
     # inverse t = 1: (a, b) = lanes (2k, 2k+1): sums in 2k, red((a + 3q - b) S) in 2k+1; inv[256+4w+k] at byte 512+8w
     L += [
-        "V := shr(192, mload(add(ti, add(512, shl(3, w)))))",
+        "V := shr(192, mload(add(t3, 1024)))",
         "lo := and(W, _M0246)",
         "W := and(shr(32, W), _M0246)",
         "let d := sub(add(lo, _Q5_0246), W)",
@@ -289,7 +296,7 @@ def inword():
     ]
     # inverse t = 2: (0,2),(1,3) with inv[128+2w]; (4,6),(5,7) with inv[129+2w]
     L += [
-        "V := shr(224, mload(add(ti, add(256, shl(2, w)))))",
+        "V := shr(224, mload(add(t2, 1024)))",
         "lo := and(W, _M0145)",
         "W := and(shr(64, W), _M0145)",
         "d := sub(add(lo, _Q10_0145), W)",
@@ -301,7 +308,7 @@ def inword():
     ]
     # inverse t = 4: (i, i+4) with inv[64+w]
     L += [
-        "V := and(shr(240, mload(add(ti, add(128, shl(1, w))))), 0xffff)",
+        "V := and(shr(240, mload(add(t1, 1024))), 0xffff)",
         "lo := and(W, _LO128)",
         "W := shr(128, W)",
         "d := mul(sub(add(lo, _Q2LO), W), V)",
@@ -338,8 +345,9 @@ out = f"""// SPDX-License-Identifier: MIT
 //            * {D1R} (= inv[1]*128R mod q)
 // Output lanes stored as 3q + 6144 - s1_i (s1_i < 3q). Every bound is asserted
 // by pythonref/model_ntt8.py.
-// Twiddle tables: 512 big-endian uint16 (aligned-layer entries 1..63 in
-// Montgomery form), copied from code, read by unaligned mload.
+// Twiddle tables: 2 x 512 big-endian uint16 in one constant (forward, then
+// inverse; entries 1..511 in Montgomery form), copied from code, read by
+// unaligned mload at running pointers.
 pragma solidity ^0.8.25;
 
 uint256 constant _M16 = {hx(rep8(0xFFFF))};
@@ -382,8 +390,8 @@ uint256 constant _SB = {hx((0xFFFFFFFF << 32) | (0xFFFFFFFF << 160))};
 uint256 constant _SC = {hx(sum(0xFFFF << (64 * i) for i in range(4)))};
 uint256 constant _SD = {hx(sum(0xFFFF0000 << (64 * i) for i in range(4)))};
 
-bytes constant _FW8 = hex"{hexbytes(table(FW))}";
-bytes constant _INV8 = hex"{hexbytes(table(INV))}";
+// forward table (1,024 bytes) followed by the inverse table (1,024 bytes)
+bytes constant _TW8 = hex"{hexbytes(table(FW))}{hexbytes(table(INV))}";
 
 /// @dev pass A: octets (i, i+8, ..., i+56) read from the compact s2 and spread
 function _fw8PassA(uint256[] memory c) pure returns (uint256[] memory A) {{
@@ -404,9 +412,14 @@ function _fw8PassA(uint256[] memory c) pure returns (uint256[] memory A) {{
 function _fw8PassB(uint256[] memory A, uint256 tb) pure {{
     assembly ("memory-safe") {{
         let p := add(A, 32)
-        for {{ let b := 0 }} lt(b, 8) {{ b := add(b, 1) }} {{
+        let t1 := add(tb, 16)
+        let t2 := add(tb, 32)
+        let t3 := add(tb, 64)
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 0x100) }} {{
 {indent(ct_octet(lambda k: ldp(k, 0x20), lambda k, e: stp(k, e, 0x20), fwB, (3, 3, 4)), 12)}
-            p := add(p, 0x100)
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
         }}
     }}
 }}
@@ -414,12 +427,24 @@ function _fw8PassB(uint256[] memory A, uint256 tb) pure {{
 /// @dev in-word kernel on the 64 words, SWAR on the packed word: forward
 ///      t = 4, 2, 1, pointwise by the compact key (one REDC, the R^-1 it leaves
 ///      is cancelled in the last layer), inverse t = 1, 2, 4; output lanes < 4q
-function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256 ti) pure {{
+function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb) pure {{
     assembly ("memory-safe") {{
         let p := add(A, 32)
-        for {{ let w := 0 }} lt(w, 64) {{ w := add(w, 1) }} {{
+        // running twiddle pointers: fw[64+w] at tb+128+2w, fw[128+2w] at tb+256+4w,
+        // fw[256+4w] at tb+512+8w; the inverse entries 1,024 bytes further
+        let t1 := add(tb, 128)
+        let t2 := add(tb, 256)
+        let t3 := add(tb, 512)
+        // key: half ks (0 or 128) of the compact word at kp
+        let kp := add(pk, 32)
+        let ks := 0
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
 {indent(inword(), 12)}
-            p := add(p, 32)
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
+            kp := add(kp, shr(2, ks))
+            ks := xor(ks, 128)
         }}
     }}
 }}
@@ -428,9 +453,14 @@ function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256
 function _inv8PassB(uint256[] memory A, uint256 tb) pure {{
     assembly ("memory-safe") {{
         let p := add(A, 32)
-        for {{ let b := 0 }} lt(b, 8) {{ b := add(b, 1) }} {{
+        let t1 := add(tb, 16)
+        let t2 := add(tb, 32)
+        let t3 := add(tb, 64)
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 0x100) }} {{
 {indent(gs_octet(lambda k: ldp(k, 0x20), lambda k, e: stp(k, e, 0x20), invB, (4, 4, 4), (True, True, True)), 12)}
-            p := add(p, 0x100)
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
         }}
     }}
 }}
@@ -456,18 +486,15 @@ function _inv8PassA(uint256[] memory A) pure {{
 ///         difference h_i - s1_i.
 function falconProduct8(uint256[] memory s2, uint256[] memory h) pure returns (uint256[] memory A) {{
     require(s2.length == 32 && h.length == 32, "compact length");
-    bytes memory fwt = _FW8;
-    bytes memory ivt = _INV8;
+    bytes memory tw = _TW8;
     uint256 tb;
-    uint256 ti;
     assembly ("memory-safe") {{
-        tb := add(fwt, 32)
-        ti := add(ivt, 32)
+        tb := add(tw, 32)
     }}
     A = _fw8PassA(s2);
     _fw8PassB(A, tb);
-    _fw8InWord(A, h, tb, ti);
-    _inv8PassB(A, ti);
+    _fw8InWord(A, h, tb);
+    _inv8PassB(A, tb + 1024);
     _inv8PassA(A);
 }}
 """

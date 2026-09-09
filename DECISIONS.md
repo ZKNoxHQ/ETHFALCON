@@ -210,16 +210,22 @@ calculé avant.
    reste mesurable à côté.
 
 **Conséquences**
-- 726 912 → 662 353, 5,90x depuis l'origine, helper froid. Les permutations
+- 726 912 → 654 611, 5,97x depuis l'origine, helper froid. Les permutations
   résidentes, ~405 k, sont 61 % du total.
 - `ZKNOX_falcon8` se lie au wrapper résident du helper (généré par
   `pythonref/gen_resident_helper.py`, code hash `0x3926a288…`), pas au helper
   propre de `fused`/`turbo` : un déploiement de plus par chaîne.
 - Le noyau intra-mot est en SWAR : la version scalaire à huit variables de
-  lane coûtait 123,7 k (placement de pile via-IR), la SWAR 106,9 k. Lu dans
-  le bytecode : 520 opcodes par mot, 42 multiplications dont 22
+  lane coûtait 123,7 k (placement de pile via-IR), la SWAR 106,9 k, puis
+  ~100 k avec des pointeurs courants pour les twiddles et la clé. Lu dans le
+  bytecode : ~500 opcodes par mot, 42 multiplications dont 22
   incompressibles, sans gras de compilation ; c'est le plancher de cette
-  formulation, pas un poste ouvert.
+  formulation.
+- Règle d'écriture, reprise du premier code du dépôt : une boucle avance
+  ses pointeurs de la taille de son pas, elle ne recalcule pas une adresse
+  depuis un compteur. Vérifié sur toute la chaîne à huit lanes ; les seuls
+  index qui restent sont ceux du sampler, dont la consommation est
+  irrégulière.
 - Les lanes répliquées résidentes sont reprises avec un wrapper à nous.
 
 **Attribution**

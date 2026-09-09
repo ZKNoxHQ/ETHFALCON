@@ -25,8 +25,9 @@
 //            * 10323 (= inv[1]*128R mod q)
 // Output lanes stored as 3q + 6144 - s1_i (s1_i < 3q). Every bound is asserted
 // by pythonref/model_ntt8.py.
-// Twiddle tables: 512 big-endian uint16 (aligned-layer entries 1..63 in
-// Montgomery form), copied from code, read by unaligned mload.
+// Twiddle tables: 2 x 512 big-endian uint16 in one constant (forward, then
+// inverse; entries 1..511 in Montgomery form), copied from code, read by
+// unaligned mload at running pointers.
 pragma solidity ^0.8.25;
 
 uint256 constant _M16 = 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff;
@@ -69,10 +70,9 @@ uint256 constant _SB = 0x0000000000000000ffffffff000000000000000000000000fffffff
 uint256 constant _SC = 0x000000000000ffff000000000000ffff000000000000ffff000000000000ffff;
 uint256 constant _SD = 0x00000000ffff000000000000ffff000000000000ffff000000000000ffff0000;
 
-bytes constant _FW8 =
-    hex"00011ed02b342bc81b3010f61883261f063718ff25051492024a16c11d7225ee046e190706af03c51bbb1dfa0e9f192a28ae1fa4075d06980554285927b423dc2fb2186003e5007512af1137060d1ba00b0d193a114f22ad1be80a0416200fca2f9d01b029ff04d51dba05fe0f8f1eb7088518a4221019aa12eb069a000e0f2015c124982f8307e31d77090b12411cac0611048420d12c7d03fc0b972a141b850cf42be414a52d3a298d276625151824243d17f20cfb037328e501e905de0b232b3526010ab62fd1136a28f1275e04ab02da06e20f0e07ee17042aaa233c149a23db0e140ec627de0c6c0d8b123c098e1dbd24aa03421e171ab40d4b14e72ff40dfc06cb2a44263b27e10fe62fda214d28a10abd1caa294e179803af247205c51ad125c40e0119e92f710fdf0e641e001ffc1af60dcd264f17ca02d727731b5b1b21079d2603293f17a9017a1ebf223b22c5240d228e11c725752d901dce22751630135c186b20c427ac221309250c5705bb155421691e670a590910234c182c02e10e72125b167923560e67001003921442292311c807ac0db520f41d5c150529ed0cd11b7d04240b4f1bf422b714ed190920050b9218e713c819ea15f9011603a427f522df1dda015f245200ed16e21e0c0c4a2f5e1da208052c150eda145411fa06d42c2401540e7f1206012c2af113ce27412d602fd71cfd29d3167216160efb15b104c8211c24150f0500fa2bc9108118b625d02fde10280ada02b42268190a1a3e277928b20eaf1cbc2c6120f119250e4418c62312150f08e0194c1cf820e22a482ed21665036c1b76087709840d722401200e12fa174c0aba1c0a059a1cdd22af29a52cc1107c05982a5010e8216d074b24ee09700ee8237402ae151109db10f317e3026b03a90b121e5f0ccf093b1d4017e013c0033827dc2daa04590aa72678038007ec13d30a5e28e01ecc2f89153a0bfe190023ac2d982f7911a804f9260b2ccc26d1273725f808d624b72bb8013b119f048617ad1a5f2e5901651cc711c603d7215620a0278e1d6a2425110f14650f9f22490c591b4e10222d840d2e2cd506d9012421e90af6288a2f9c16a82e230c6d07c40400247c09ad2ab011e61a5e0e23157f1471099f21161de21f1c18fb042f04f80d922b250cdb2c5021362506266d04e50741185912702d29179226590d0b07050b3f1862145008421f1a24892c63156317c42581100c1c9b28c624ff04f701981aff0c07016820542d0f23c423592d13035221a903101eef208e2f8a073627e52f981e932e7f15e0263303f402d10ae01a14199814e411481aa020d526e7141e093415b014930535226125bd1c8c169c132e038d2d5d112b202e1a1e10ce0be408ed2fd907ab240010c82e8e02b7111326411314096b27f60a5a03490f3227f71c5021392bbc1a20";
-bytes constant _INV8 =
-    hex"00011131043904cd09e2177e1f0b14d10a13128f19402db71b6f0afc170229ca0c25084d07a82aad296928a4105d075316d72162120714462c3c295216fa2b9320e12ff329671d1616570df1175d277c114a20722a0312472b2c06022e510064203719e125fd14190d541eb216c724f4146129f41eca1d522f8c2c1c17a1004f000d1b1a22b6154d11ea2cbf0b57124426731dc5227623950823213b21ed0c261b670cc5055718fd281320f3291f2d272b5608a307101c970030254b0a0004cc24de2a232e18071c2c8e2306180f0bc417dd0aec089b067402c71b5c041d230d147c05ed246a2c0503840f302b7d29f013551dc026f6128a281e007e0b691a4019eb198f062e1304002a02a108c01c3305102ed51dfb21822ead03dd292d1e071bad212703ec27fc125f00a323b711f5191f2f140baf2ea212270d22080c2c5d2eeb1a0816171c39171a246f0ffc16f81b140d4a140d24b22bdd1484233006141afc12a50f0d224c28551e3906de1bbf2c6f2ff1219a0cab19881da6218f2d2017d50cb526f125a8119a0e981aad2a4623aa26dc0dee08550f3d17961ca519d10d8c123302710a8c1e3a0d730bf40d3c0dc611422e87185806c209fe286414e014a6088e2d2a183709b22234150b10051201219d20220090161822000a3d15302a3c0b8f2c52186906b31357254407600eb40027201b082009c605bd2936220515e104450ec813b1080a20cf2cb825a7080b26961ced09c01eee2d4a01731f390c01285600282714241d1f3315e30fd31ed602a42c741cd3196513750a440da02acc1b6e1a5126cd1be3091a0f2c15611eb91b1d166915ed25212d302c0d09ce1a210182116e0069081c28cb00770f7311122cf10e582caf02ee0ca80c3d02f20fad2e9923fa15022e692b0a0b02073b13661ff50a80183d1a9e039e0b7810e727bf1bb1179f24c228fc22f609a8186f02d81d9117a828c02b1c09940afb0ecb03b1232604dc226f2b092bd2170610e5121f0eeb26621b901a8221de15a31e1b055126540b852c01283d239401de195900650777250b0e182edd2928032c22d3027d1fdf14b323a80db820621b9c1ef20bdc129708730f610eab2c2a1e3b133a2e9c01a815a218542b7b1e622ec604490b4a272b0a0908ca0930033509f62b081e59008802690c55170124031ac700781135072125a31c2e28152c810989255a2ba8025708252cc91c41182112c126c6233211a224ef2c582d96181e1f0e26261af02d530c8d211926910b1328b60e941f1905b12a691f850340065c0d5213242a6713f7254718b51d070ff30c00228f267d278a148b2c95199c012f05b90f1f130916b527211af20cef173b21bd16dc0f1003a013452152074f088815c316f70d992d4d25271fd900230a31174b1f8004382f0720fc0bec0ee52b391a502106";
+// forward table (1,024 bytes) followed by the inverse table (1,024 bytes)
+bytes constant _TW8 =
+    hex"00011ed02b342bc81b3010f61883261f063718ff25051492024a16c11d7225ee046e190706af03c51bbb1dfa0e9f192a28ae1fa4075d06980554285927b423dc2fb2186003e5007512af1137060d1ba00b0d193a114f22ad1be80a0416200fca2f9d01b029ff04d51dba05fe0f8f1eb7088518a4221019aa12eb069a000e0f2015c124982f8307e31d77090b12411cac0611048420d12c7d03fc0b972a141b850cf42be414a52d3a298d276625151824243d17f20cfb037328e501e905de0b232b3526010ab62fd1136a28f1275e04ab02da06e20f0e07ee17042aaa233c149a23db0e140ec627de0c6c0d8b123c098e1dbd24aa03421e171ab40d4b14e72ff40dfc06cb2a44263b27e10fe62fda214d28a10abd1caa294e179803af247205c51ad125c40e0119e92f710fdf0e641e001ffc1af60dcd264f17ca02d727731b5b1b21079d2603293f17a9017a1ebf223b22c5240d228e11c725752d901dce22751630135c186b20c427ac221309250c5705bb155421691e670a590910234c182c02e10e72125b167923560e67001003921442292311c807ac0db520f41d5c150529ed0cd11b7d04240b4f1bf422b714ed190920050b9218e713c819ea15f9011603a427f522df1dda015f245200ed16e21e0c0c4a2f5e1da208052c150eda145411fa06d42c2401540e7f1206012c2af113ce27412d602fd71cfd29d3167216160efb15b104c8211c24150f0500fa2bc9108118b625d02fde10280ada02b42268190a1a3e277928b20eaf1cbc2c6120f119250e4418c62312150f08e0194c1cf820e22a482ed21665036c1b76087709840d722401200e12fa174c0aba1c0a059a1cdd22af29a52cc1107c05982a5010e8216d074b24ee09700ee8237402ae151109db10f317e3026b03a90b121e5f0ccf093b1d4017e013c0033827dc2daa04590aa72678038007ec13d30a5e28e01ecc2f89153a0bfe190023ac2d982f7911a804f9260b2ccc26d1273725f808d624b72bb8013b119f048617ad1a5f2e5901651cc711c603d7215620a0278e1d6a2425110f14650f9f22490c591b4e10222d840d2e2cd506d9012421e90af6288a2f9c16a82e230c6d07c40400247c09ad2ab011e61a5e0e23157f1471099f21161de21f1c18fb042f04f80d922b250cdb2c5021362506266d04e50741185912702d29179226590d0b07050b3f1862145008421f1a24892c63156317c42581100c1c9b28c624ff04f701981aff0c07016820542d0f23c423592d13035221a903101eef208e2f8a073627e52f981e932e7f15e0263303f402d10ae01a14199814e411481aa020d526e7141e093415b014930535226125bd1c8c169c132e038d2d5d112b202e1a1e10ce0be408ed2fd907ab240010c82e8e02b7111326411314096b27f60a5a03490f3227f71c5021392bbc1a2000011131043904cd09e2177e1f0b14d10a13128f19402db71b6f0afc170229ca0c25084d07a82aad296928a4105d075316d72162120714462c3c295216fa2b9320e12ff329671d1616570df1175d277c114a20722a0312472b2c06022e510064203719e125fd14190d541eb216c724f4146129f41eca1d522f8c2c1c17a1004f000d1b1a22b6154d11ea2cbf0b57124426731dc5227623950823213b21ed0c261b670cc5055718fd281320f3291f2d272b5608a307101c970030254b0a0004cc24de2a232e18071c2c8e2306180f0bc417dd0aec089b067402c71b5c041d230d147c05ed246a2c0503840f302b7d29f013551dc026f6128a281e007e0b691a4019eb198f062e1304002a02a108c01c3305102ed51dfb21822ead03dd292d1e071bad212703ec27fc125f00a323b711f5191f2f140baf2ea212270d22080c2c5d2eeb1a0816171c39171a246f0ffc16f81b140d4a140d24b22bdd1484233006141afc12a50f0d224c28551e3906de1bbf2c6f2ff1219a0cab19881da6218f2d2017d50cb526f125a8119a0e981aad2a4623aa26dc0dee08550f3d17961ca519d10d8c123302710a8c1e3a0d730bf40d3c0dc611422e87185806c209fe286414e014a6088e2d2a183709b22234150b10051201219d20220090161822000a3d15302a3c0b8f2c52186906b31357254407600eb40027201b082009c605bd2936220515e104450ec813b1080a20cf2cb825a7080b26961ced09c01eee2d4a01731f390c01285600282714241d1f3315e30fd31ed602a42c741cd3196513750a440da02acc1b6e1a5126cd1be3091a0f2c15611eb91b1d166915ed25212d302c0d09ce1a210182116e0069081c28cb00770f7311122cf10e582caf02ee0ca80c3d02f20fad2e9923fa15022e692b0a0b02073b13661ff50a80183d1a9e039e0b7810e727bf1bb1179f24c228fc22f609a8186f02d81d9117a828c02b1c09940afb0ecb03b1232604dc226f2b092bd2170610e5121f0eeb26621b901a8221de15a31e1b055126540b852c01283d239401de195900650777250b0e182edd2928032c22d3027d1fdf14b323a80db820621b9c1ef20bdc129708730f610eab2c2a1e3b133a2e9c01a815a218542b7b1e622ec604490b4a272b0a0908ca0930033509f62b081e59008802690c55170124031ac700781135072125a31c2e28152c810989255a2ba8025708252cc91c41182112c126c6233211a224ef2c582d96181e1f0e26261af02d530c8d211926910b1328b60e941f1905b12a691f850340065c0d5213242a6713f7254718b51d070ff30c00228f267d278a148b2c95199c012f05b90f1f130916b527211af20cef173b21bd16dc0f1003a013452152074f088815c316f70d992d4d25271fd900230a31174b1f8004382f0720fc0bec0ee52b391a502106";
 
 /// @dev pass A: octets (i, i+8, ..., i+56) read from the compact s2 and spread
 function _fw8PassA(uint256[] memory c) pure returns (uint256[] memory A) {
@@ -204,65 +204,70 @@ function _fw8PassA(uint256[] memory c) pure returns (uint256[] memory A) {
 function _fw8PassB(uint256[] memory A, uint256 tb) pure {
     assembly ("memory-safe") {
         let p := add(A, 32)
-        for { let b := 0 } lt(b, 8) { b := add(b, 1) } {
+        let t1 := add(tb, 16)
+        let t2 := add(tb, 32)
+        let t3 := add(tb, 64)
+        for { let e := add(p, 0x800) } lt(p, e) { p := add(p, 0x100) } {
             let c0, c2, c4, c6
             {
                 let u0 := mload(p)
-                let t := mul(mload(add(p, 0x80)), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                let t := mul(mload(add(p, 0x80)), and(shr(240, mload(t1)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 let a0 := add(u0, t)
                 u0 := sub(add(u0, _Q8_3), t)
                 let u2 := mload(add(p, 0x40))
-                t := mul(mload(add(p, 0xc0)), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                t := mul(mload(add(p, 0xc0)), and(shr(240, mload(t1)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 let a2 := add(u2, t)
                 u2 := sub(add(u2, _Q8_3), t)
-                t := mul(a2, and(shr(240, mload(add(tb, add(32, shl(2, b))))), 0xffff))
+                t := mul(a2, and(shr(240, mload(t2)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 c0 := add(a0, t)
                 c2 := sub(add(a0, _Q8_3), t)
-                t := mul(u2, and(shr(240, mload(add(tb, add(34, shl(2, b))))), 0xffff))
+                t := mul(u2, and(shr(240, mload(add(t2, 2))), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 c4 := add(u0, t)
                 c6 := sub(add(u0, _Q8_3), t)
             }
             {
                 let u1 := mload(add(p, 0x20))
-                let t := mul(mload(add(p, 0xa0)), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                let t := mul(mload(add(p, 0xa0)), and(shr(240, mload(t1)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 let a1 := add(u1, t)
                 let b1 := sub(add(u1, _Q8_3), t)
                 u1 := mload(add(p, 0x60))
-                t := mul(mload(add(p, 0xe0)), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                t := mul(mload(add(p, 0xe0)), and(shr(240, mload(t1)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 let a3 := add(u1, t)
                 u1 := sub(add(u1, _Q8_3), t)
-                t := mul(a3, and(shr(240, mload(add(tb, add(32, shl(2, b))))), 0xffff))
+                t := mul(a3, and(shr(240, mload(t2)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 a3 := sub(add(a1, _Q8_3), t)
                 a1 := add(a1, t)
-                t := mul(u1, and(shr(240, mload(add(tb, add(34, shl(2, b))))), 0xffff))
+                t := mul(u1, and(shr(240, mload(add(t2, 2))), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 u1 := sub(add(b1, _Q8_3), t)
                 b1 := add(b1, t)
-                t := mul(a1, and(shr(240, mload(add(tb, add(64, shl(3, b))))), 0xffff))
+                t := mul(a1, and(shr(240, mload(t3)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 mstore(p, add(c0, t))
                 mstore(add(p, 0x20), sub(add(c0, _Q8_4), t))
-                t := mul(a3, and(shr(240, mload(add(tb, add(66, shl(3, b))))), 0xffff))
+                t := mul(a3, and(shr(240, mload(add(t3, 2))), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0x40), add(c2, t))
                 mstore(add(p, 0x60), sub(add(c2, _Q8_4), t))
-                t := mul(b1, and(shr(240, mload(add(tb, add(68, shl(3, b))))), 0xffff))
+                t := mul(b1, and(shr(240, mload(add(t3, 4))), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0x80), add(c4, t))
                 mstore(add(p, 0xa0), sub(add(c4, _Q8_4), t))
-                t := mul(u1, and(shr(240, mload(add(tb, add(70, shl(3, b))))), 0xffff))
+                t := mul(u1, and(shr(240, mload(add(t3, 6))), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0xc0), add(c6, t))
                 mstore(add(p, 0xe0), sub(add(c6, _Q8_4), t))
             }
-            p := add(p, 0x100)
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
         }
     }
 }
@@ -270,23 +275,31 @@ function _fw8PassB(uint256[] memory A, uint256 tb) pure {
 /// @dev in-word kernel on the 64 words, SWAR on the packed word: forward
 ///      t = 4, 2, 1, pointwise by the compact key (one REDC, the R^-1 it leaves
 ///      is cancelled in the last layer), inverse t = 1, 2, 4; output lanes < 4q
-function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256 ti) pure {
+function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb) pure {
     assembly ("memory-safe") {
         let p := add(A, 32)
-        for { let w := 0 } lt(w, 64) { w := add(w, 1) } {
+        // running twiddle pointers: fw[64+w] at tb+128+2w, fw[128+2w] at tb+256+4w,
+        // fw[256+4w] at tb+512+8w; the inverse entries 1,024 bytes further
+        let t1 := add(tb, 128)
+        let t2 := add(tb, 256)
+        let t3 := add(tb, 512)
+        // key: half ks (0 or 128) of the compact word at kp
+        let kp := add(pk, 32)
+        let ks := 0
+        for { let e := add(p, 0x800) } lt(p, e) { p := add(p, 32) } {
             let W := mload(p)
-            let V := mul(shr(128, W), and(shr(240, mload(add(tb, add(128, shl(1, w))))), 0xffff))
+            let V := mul(shr(128, W), and(shr(240, mload(t1)), 0xffff))
             V := shr(16, add(V, mul(and(mul(and(V, _M16), 12287), _M16), 12289)))
             let lo := and(W, _LO128)
             W := or(add(lo, V), shl(128, sub(add(lo, _Q5LO), V)))
-            V := shr(224, mload(add(tb, add(256, shl(2, w)))))
+            V := shr(224, mload(t2))
             lo := and(shr(64, W), _M0145)
             V := or(and(mul(lo, shr(16, V)), _M01), and(mul(lo, and(V, 0xffff)), _M45))
             V := shr(16, add(V, mul(and(mul(and(V, _M16), 12287), _M16), 12289)))
             lo := and(W, _M0145)
             W := or(add(lo, V), shl(64, sub(add(lo, _Q6_0145), V)))
             W := sub(W, mul(and(shr(18, mul(W, 21)), _Q5), 12289))
-            V := shr(192, mload(add(tb, add(512, shl(3, w)))))
+            V := shr(192, mload(t3))
             lo := and(shr(32, W), _M0246)
             V := or(
                 or(and(mul(lo, shr(48, V)), _LN0), and(mul(lo, and(shr(32, V), 0xffff)), _LN2)),
@@ -295,7 +308,7 @@ function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256
             V := shr(16, add(V, mul(and(mul(and(V, _M16), 12287), _M16), 12289)))
             lo := and(W, _M0246)
             W := or(add(lo, V), shl(32, sub(add(lo, _Q2_0246), V)))
-            V := shr(shl(7, and(w, 1)), mload(add(pk, add(32, shl(5, shr(1, w))))))
+            V := shr(ks, mload(kp))
             W := or(
                 or(
                     or(and(mul(W, and(V, 0xffff)), _LN0), and(mul(W, and(shr(16, V), 0xffff)), _LN1)),
@@ -307,7 +320,7 @@ function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256
                 )
             )
             W := shr(16, add(W, mul(and(mul(and(W, _M16), 12287), _M16), 12289)))
-            V := shr(192, mload(add(ti, add(512, shl(3, w)))))
+            V := shr(192, mload(add(t3, 1024)))
             lo := and(W, _M0246)
             W := and(shr(32, W), _M0246)
             let d := sub(add(lo, _Q5_0246), W)
@@ -318,7 +331,7 @@ function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256
             )
             W := shr(16, add(W, mul(and(mul(and(W, _M16), 12287), _M16), 12289)))
             W := or(lo, shl(32, W))
-            V := shr(224, mload(add(ti, add(256, shl(2, w)))))
+            V := shr(224, mload(add(t2, 1024)))
             lo := and(W, _M0145)
             W := and(shr(64, W), _M0145)
             d := sub(add(lo, _Q10_0145), W)
@@ -327,13 +340,17 @@ function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256
             W := shr(16, add(W, mul(and(mul(and(W, _M16), 12287), _M16), 12289)))
             W := or(lo, shl(64, W))
             W := sub(W, mul(and(shr(18, mul(W, 21)), _Q5), 12289))
-            V := and(shr(240, mload(add(ti, add(128, shl(1, w))))), 0xffff)
+            V := and(shr(240, mload(add(t1, 1024))), 0xffff)
             lo := and(W, _LO128)
             W := shr(128, W)
             d := mul(sub(add(lo, _Q2LO), W), V)
             d := shr(16, add(d, mul(and(mul(and(d, _M16), 12287), _M16), 12289)))
             mstore(p, or(add(lo, W), shl(128, d)))
-            p := add(p, 32)
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
+            kp := add(kp, shr(2, ks))
+            ks := xor(ks, 128)
         }
     }
 }
@@ -342,24 +359,27 @@ function _fw8InWord(uint256[] memory A, uint256[] memory pk, uint256 tb, uint256
 function _inv8PassB(uint256[] memory A, uint256 tb) pure {
     assembly ("memory-safe") {
         let p := add(A, 32)
-        for { let b := 0 } lt(b, 8) { b := add(b, 1) } {
+        let t1 := add(tb, 16)
+        let t2 := add(tb, 32)
+        let t3 := add(tb, 64)
+        for { let e := add(p, 0x800) } lt(p, e) { p := add(p, 0x100) } {
             let b0, b1, b2, b3
             {
                 let u := mload(p)
                 let v := mload(add(p, 0x20))
-                let t := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(add(tb, add(64, shl(3, b))))), 0xffff))
+                let t := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(t3)), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 u := sub(add(u, v), mul(shr(17, and(add(add(u, v), _C17), _G17)), 49156))
                 v := mload(add(p, 0x40))
                 let w := mload(add(p, 0x60))
-                let s := mul(sub(add(v, _Q8_4), w), and(shr(240, mload(add(tb, add(66, shl(3, b))))), 0xffff))
+                let s := mul(sub(add(v, _Q8_4), w), and(shr(240, mload(add(t3, 2))), 0xffff))
                 s := shr(16, add(s, mul(and(mul(and(s, _M16), 12287), _M16), 12289)))
                 v := sub(add(v, w), mul(shr(17, and(add(add(v, w), _C17), _G17)), 49156))
-                w := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(add(tb, add(32, shl(2, b))))), 0xffff))
+                w := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(t2)), 0xffff))
                 w := shr(16, add(w, mul(and(mul(and(w, _M16), 12287), _M16), 12289)))
                 b0 := sub(add(u, v), mul(shr(17, and(add(add(u, v), _C17), _G17)), 49156))
                 b2 := w
-                w := mul(sub(add(t, _Q8_4), s), and(shr(240, mload(add(tb, add(32, shl(2, b))))), 0xffff))
+                w := mul(sub(add(t, _Q8_4), s), and(shr(240, mload(t2)), 0xffff))
                 w := shr(16, add(w, mul(and(mul(and(w, _M16), 12287), _M16), 12289)))
                 b1 := sub(add(t, s), mul(shr(17, and(add(add(t, s), _C17), _G17)), 49156))
                 b3 := w
@@ -367,38 +387,40 @@ function _inv8PassB(uint256[] memory A, uint256 tb) pure {
             {
                 let u := mload(add(p, 0x80))
                 let v := mload(add(p, 0xa0))
-                let t := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(add(tb, add(68, shl(3, b))))), 0xffff))
+                let t := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(add(t3, 4))), 0xffff))
                 t := shr(16, add(t, mul(and(mul(and(t, _M16), 12287), _M16), 12289)))
                 u := sub(add(u, v), mul(shr(17, and(add(add(u, v), _C17), _G17)), 49156))
                 v := mload(add(p, 0xc0))
                 let w := mload(add(p, 0xe0))
-                let s := mul(sub(add(v, _Q8_4), w), and(shr(240, mload(add(tb, add(70, shl(3, b))))), 0xffff))
+                let s := mul(sub(add(v, _Q8_4), w), and(shr(240, mload(add(t3, 6))), 0xffff))
                 s := shr(16, add(s, mul(and(mul(and(s, _M16), 12287), _M16), 12289)))
                 v := sub(add(v, w), mul(shr(17, and(add(add(v, w), _C17), _G17)), 49156))
-                w := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(add(tb, add(34, shl(2, b))))), 0xffff))
+                w := mul(sub(add(u, _Q8_4), v), and(shr(240, mload(add(t2, 2))), 0xffff))
                 w := shr(16, add(w, mul(and(mul(and(w, _M16), 12287), _M16), 12289)))
                 u := sub(add(u, v), mul(shr(17, and(add(add(u, v), _C17), _G17)), 49156))
-                v := mul(sub(add(t, _Q8_4), s), and(shr(240, mload(add(tb, add(34, shl(2, b))))), 0xffff))
+                v := mul(sub(add(t, _Q8_4), s), and(shr(240, mload(add(t2, 2))), 0xffff))
                 v := shr(16, add(v, mul(and(mul(and(v, _M16), 12287), _M16), 12289)))
                 t := sub(add(t, s), mul(shr(17, and(add(add(t, s), _C17), _G17)), 49156))
-                s := mul(sub(add(b0, _Q8_4), u), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                s := mul(sub(add(b0, _Q8_4), u), and(shr(240, mload(t1)), 0xffff))
                 s := shr(16, add(s, mul(and(mul(and(s, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0x80), s)
                 mstore(p, sub(add(b0, u), mul(shr(17, and(add(add(b0, u), _C17), _G17)), 49156)))
-                s := mul(sub(add(b1, _Q8_4), t), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                s := mul(sub(add(b1, _Q8_4), t), and(shr(240, mload(t1)), 0xffff))
                 s := shr(16, add(s, mul(and(mul(and(s, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0xa0), s)
                 mstore(add(p, 0x20), sub(add(b1, t), mul(shr(17, and(add(add(b1, t), _C17), _G17)), 49156)))
-                s := mul(sub(add(b2, _Q8_4), w), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                s := mul(sub(add(b2, _Q8_4), w), and(shr(240, mload(t1)), 0xffff))
                 s := shr(16, add(s, mul(and(mul(and(s, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0xc0), s)
                 mstore(add(p, 0x40), sub(add(b2, w), mul(shr(17, and(add(add(b2, w), _C17), _G17)), 49156)))
-                s := mul(sub(add(b3, _Q8_4), v), and(shr(240, mload(add(tb, add(16, shl(1, b))))), 0xffff))
+                s := mul(sub(add(b3, _Q8_4), v), and(shr(240, mload(t1)), 0xffff))
                 s := shr(16, add(s, mul(and(mul(and(s, _M16), 12287), _M16), 12289)))
                 mstore(add(p, 0xe0), s)
                 mstore(add(p, 0x60), sub(add(b3, v), mul(shr(17, and(add(add(b3, v), _C17), _G17)), 49156)))
             }
-            p := add(p, 0x100)
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
         }
     }
 }
@@ -486,17 +508,14 @@ function _inv8PassA(uint256[] memory A) pure {
 ///         difference h_i - s1_i.
 function falconProduct8(uint256[] memory s2, uint256[] memory h) pure returns (uint256[] memory A) {
     require(s2.length == 32 && h.length == 32, "compact length");
-    bytes memory fwt = _FW8;
-    bytes memory ivt = _INV8;
+    bytes memory tw = _TW8;
     uint256 tb;
-    uint256 ti;
     assembly ("memory-safe") {
-        tb := add(fwt, 32)
-        ti := add(ivt, 32)
+        tb := add(tw, 32)
     }
     A = _fw8PassA(s2);
     _fw8PassB(A, tb);
-    _fw8InWord(A, h, tb, ti);
-    _inv8PassB(A, ti);
+    _fw8InWord(A, h, tb);
+    _inv8PassB(A, tb + 1024);
     _inv8PassA(A);
 }

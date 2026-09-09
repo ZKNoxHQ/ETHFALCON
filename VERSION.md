@@ -6,10 +6,10 @@
 | Vérifieur | gas |
 |---|---:|
 | `ZKNOX_falcon_fused.verify` (quatre lanes, Barrett) | 726 912 |
-| `ZKNOX_falcon8.verify` (huit lanes, Montgomery, norme dans le sampler, lanes résidentes) | **662 353** (−8,9 %) |
+| `ZKNOX_falcon8.verify` (huit lanes, Montgomery, norme dans le sampler, lanes résidentes) | **654 611** (−9,9 %) |
 
-Depuis l'origine : 3 910 833 → 662 353, **5,90x**, helper résident froid.
-Runtime `ZKNOX_falcon8` 19 700 octets ; 153/153 tests.
+Depuis l'origine : 3 910 833 → 654 611, **5,97x**, helper résident froid.
+Runtime `ZKNOX_falcon8` 19 745 octets ; 153/153 tests.
 
 ### Added
 - `src/ZKNOX_NTT_falcon8.sol` (GÉNÉRÉ par `pythonref/gen_ntt8.py`, puis
@@ -34,7 +34,16 @@ Runtime `ZKNOX_falcon8` 19 700 octets ; 153/153 tests.
   2¹⁷) à chaque couche, sortie < 3q, stockée complémentée (3q + 6144 − s1ᵢ,
   le terme que le sampler ajoute à chaque candidat). Tables de twiddles en
   octets big-endian copiées depuis le code, lues par `mload` non aligné.
-  222 314 (aller + inverse à quatre lanes) → **167 296**.
+  222 314 (aller + inverse à quatre lanes) → **160 066**.
+
+  Adressage : toutes les boucles de la chaîne avancent des pointeurs de la
+  taille de leur pas (mot, octet de table, demi-mot de clé) au lieu de
+  recalculer une adresse depuis le compteur. Les tables aller et inverse
+  sont un seul constant contigu (l'entrée inverse est 1 024 octets plus loin
+  que l'entrée aller de même rang) : le noyau lit ses six twiddles et son
+  demi-mot de clé par trois pointeurs, un décalage constant et un demi
+  alterné ; les passes B et B' lisent leurs sept twiddles par trois
+  pointeurs. −7,7 k sur le verify (662 353 → 654 611).
 
   Les Barrett du noyau : trois au départ, deux après examen. Celui d'avant le
   produit par la clé tombe avec un biais 2q à la couche t = 1 (lanes < 4q,
