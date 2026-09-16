@@ -15,6 +15,38 @@ import "../src/ZKNOX_falcon8.sol";
 import "../src/ZKNOX_HashToPoint_packed.sol";
 import "../src/ZKNOX_falcon_core_fused.sol";
 import "../src/ZKNOX_shake_fast.sol";
+import {ZKNOX_falcon1024} from "../src/ZKNOX_falcon1024.sol";
+import {falconNTT1024, falconINTT1024, falconProduct1024} from "../src/ZKNOX_NTT_falcon1024.sol";
+import {hashToPointNormS1_1024, _s2NormCompact1024} from "../src/ZKNOX_falcon1024_core.sol";
+
+/// Falcon-1024 parts behind external calls, so that each measure starts on fresh memory
+contract Bench1024Parts {
+    address public immutable helper;
+
+    constructor(address h) {
+        helper = h;
+    }
+
+    function ntt(uint256[] memory a) external pure returns (uint256[] memory) {
+        return falconNTT1024(a);
+    }
+
+    function intt(uint256[] memory a) external pure returns (uint256[] memory) {
+        return falconINTT1024(a);
+    }
+
+    function s2norm(uint256[] memory s2) external pure returns (uint256 o, uint256 n) {
+        return _s2NormCompact1024(s2);
+    }
+
+    function product(uint256[] memory s2, uint256[] memory h) external pure returns (uint256[] memory) {
+        return falconProduct1024(s2, h);
+    }
+
+    function hashNorm(bytes memory salt, bytes memory m, uint256[] memory s1) external view returns (uint256) {
+        return hashToPointNormS1_1024(salt, m, helper, s1);
+    }
+}
 
 contract Benchmark is Test {
     ZKNOX_falcon falcon;
@@ -24,6 +56,8 @@ contract Benchmark is Test {
     ZKNOX_falcon_turbo falconTurbo;
     ZKNOX_falcon_fused falconFused;
     ZKNOX_falcon8 falcon8;
+    ZKNOX_falcon1024 falcon1024;
+    Bench1024Parts parts1024;
     address f1600Helper;
 
     // forgefmt: disable-next-line
@@ -66,6 +100,57 @@ contract Benchmark is Test {
         }
         require(resident != address(0), "f1600 resident: CREATE failed");
         falcon8 = new ZKNOX_falcon8(resident);
+        falcon1024 = new ZKNOX_falcon1024(resident);
+        parts1024 = new Bench1024Parts(resident);
+    }
+
+    // ---- Falcon-1024 (NIST round-3 KAT vectors, test/falcon1024_vectors.json) --------
+
+    function _kat1024(uint256 k)
+        internal
+        view
+        returns (bytes memory m, bytes memory salt, uint256[] memory s2, uint256[] memory ntth)
+    {
+        string memory json = vm.readFile("test/falcon1024_vectors.json");
+        string memory p = string.concat(".kat[", vm.toString(k), "]");
+        m = vm.parseJsonBytes(json, string.concat(p, ".msg"));
+        salt = vm.parseJsonBytes(json, string.concat(p, ".salt"));
+        s2 = vm.parseJsonUintArray(json, string.concat(p, ".s2"));
+        ntth = vm.parseJsonUintArray(json, string.concat(p, ".ntth"));
+    }
+
+    function testBenchVerifyNIST1024() public view {
+        uint256 total;
+        for (uint256 k = 0; k < 10; k++) {
+            (bytes memory m, bytes memory salt, uint256[] memory s2, uint256[] memory ntth) = _kat1024(k);
+            uint256 g = gasleft();
+            bool ok = falcon1024.verify(m, salt, s2, ntth);
+            g -= gasleft();
+            assertTrue(ok);
+            total += g;
+            if (k == 0) console.log("Verify NIST-1024 8-LANE cost (KAT 0):", g);
+        }
+        console.log("Verify NIST-1024 8-LANE cost (mean KAT 0..9):", total / 10);
+    }
+
+    function testBenchFalcon1024Parts() public view {
+        (bytes memory m, bytes memory salt, uint256[] memory s2, uint256[] memory ntth) = _kat1024(0);
+        uint256 g = gasleft();
+        uint256[] memory n = parts1024.ntt(s2);
+        console.log("NTT 1024 (8 lanes) cost:", g - gasleft());
+        g = gasleft();
+        uint256[] memory back = parts1024.intt(n);
+        console.log("iNTT 1024 (8 lanes) cost:", g - gasleft());
+        assertEq(keccak256(abi.encode(back)), keccak256(abi.encode(s2)));
+        g = gasleft();
+        parts1024.s2norm(s2);
+        console.log("Falcon-1024 s2 norm cost:", g - gasleft());
+        g = gasleft();
+        uint256[] memory s1 = parts1024.product(s2, ntth);
+        console.log("Falcon-1024 product s1 cost:", g - gasleft());
+        g = gasleft();
+        parts1024.hashNorm(salt, m, s1);
+        console.log("Falcon-1024 HashToPoint + norm cost:", g - gasleft());
     }
 
     function testBenchmarkNTT() public view {

@@ -1,5 +1,19 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-16 — `make bench` : Falcon-1024
+
+`test/Benchmarks.t.sol` mesure aussi Falcon-1024 sur les KAT NIST de
+`test/falcon1024_vectors.json`, les parties derrière des appels externes
+(`Bench1024Parts`, mémoire fraîche, décodage ABI compris) :
+
+| | gas |
+|---|---:|
+| Verify NIST-1024 8-LANE, KAT 0 / moyenne KAT 0..9 | 1 185 222 / 1 204 726 |
+| NTT 1024 / iNTT 1024 | 202 665 / 208 724 |
+| norme s2 | 33 562 |
+| produit s1 | 361 467 |
+| HashToPoint + norme | 837 935 |
+
 ## [unreleased] — 2026-09-16 — Falcon-1024 : bornes exactes par coefficient, sampler à huit candidats — 1 254 638 → 1 185 270
 
 ### Measured
