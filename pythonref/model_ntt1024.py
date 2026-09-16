@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-# model_ntt1024.py -- lane-by-lane replay of the schedule emitted by gen_ntt1024.py
-# (Falcon-1024), checked against a scalar reference and against the vectors of
-# @noble/post-quantum in test/ntt1024_vectors.json (jsref/gen_ntt1024_vectors.mjs).
+# model_ntt1024.py -- lane-by-lane replay of the schedules emitted by gen_ntt1024.py
+# (Falcon-1024 NTT, inverse NTT, fused product), checked against a scalar reference
+# and against the vectors of @noble/post-quantum in test/ntt1024_vectors.json
+# (jsref/gen_ntt1024_vectors.mjs).
 #
 #   python3 pythonref/model_ntt1024.py
 #
@@ -123,10 +124,74 @@ def inv_model(a, track):
     return [condq(x) for x in out]
 
 
+PSCHED = G.PSCHED
+PLOG = dict(PSCHED["log"])
+
+
+def prod_model(s2, h16, track):
+    """the lane operations of falconProduct1024; returns the stored lanes 3q + 6144 - s1_i"""
+    a = s2[:]
+    t, m = N, 1
+    for layer in range(7):  # t = 512 .. 8, as the standalone forward
+        t >>= 1
+        k = FWK[layer]
+        for i in range(m):
+            S = G.FWM[m + i]
+            for j in range(2 * i * t, 2 * i * t + t):
+                r = redc(a[j + t] * S)
+                assert r <= k * q
+                a[j], a[j + t] = a[j] + r, a[j] + k * q - r
+        m <<= 1
+    track("prod after B (as fw)", a)
+    a = [barrett(x) for x in a]
+    track("prod Barrett before t=4", a)
+    for step, k in zip((4, 2, 1), PSCHED["fw"]):
+        if step == 1:
+            a = [barrett(x) for x in a]
+            track("prod Barrett before t=1", a)
+        t >>= 1
+        for i in range(m):
+            S = G.FWM[m + i]
+            for j in range(2 * i * t, 2 * i * t + t):
+                r = redc(a[j + t] * S)
+                assert r <= k * q
+                a[j], a[j + t] = a[j] + r, a[j] + k * q - r
+        track(f"prod fw t={step} bias {k}q", a)
+        m <<= 1
+    a = [redc(x * y) for x, y in zip(a, h16)]
+    track("prod pointwise (16-bit key)", a)
+    t, m = 1, N
+    steps = [(k, False) for k in PSCHED["inv"]] + list(INVK[3:])
+    for n_layer, (k, red) in enumerate(steps):
+        if n_layer == 2:
+            a = [barrett(x) for x in a]
+            track("prod Barrett before inv t=4", a)
+        h = m >> 1
+        for i in range(h):
+            S = G.INVM[h + i]
+            for j in range(2 * i * t, 2 * i * t + t):
+                U, V = a[j], a[j + t]
+                assert U + k * q - V > 0
+                s = U + V
+                a[j], a[j + t] = cond4(s) if red else s, redc((U + k * q - V) * S)
+        track(f"prod inv t={t} bias {k}q{' sums -4q' if red else ''}", a)
+        t <<= 1
+        m >>= 1
+    out = a[:]
+    k = PSCHED["inv512"]
+    for j in range(N // 2):
+        U, V = a[j], a[j + N // 2]
+        out[j] = redc((U + V) * G.CNR)
+        out[j + N // 2] = redc((U + k * q - V) * G.DNR)
+    track(f"prod inv t=512 bias {k}q, x R/1024", out)
+    return [G.CPL - x for x in out]
+
+
 def tracker(seen):
     def f(name, a):
         mx = max(a)
-        assert mx <= LOG[name], f"{name}: lane {mx} above the generator bound {LOG[name]}"
+        bound = LOG[name] if name in LOG else PLOG[name]
+        assert mx <= bound, f"{name}: lane {mx} above the generator bound {bound}"
         seen[name] = max(seen.get(name, 0), mx)
 
     return f
@@ -153,7 +218,14 @@ def main():
         assert inv_model(a, tr) == ref_inv(a)
         assert inv_model(fw_model(a, tr), tr) == a
     print("20 random polynomials: model == scalar reference, round trip")
-    for name, m in G.SCHED["log"]:
+    cases = [([rng.randrange(q) for _ in range(N)], [rng.randrange(1 << 16) for _ in range(N)]) for _ in range(12)]
+    cases += [([q - 1] * N, [0xFFFF] * N), ([q - 1] * N, [q - 1] * N)]
+    for s2, h16 in cases:
+        lanes = prod_model(s2, h16, tr)
+        ref = ref_inv([x * (y % q) % q for x, y in zip(ref_fw(s2), h16)])
+        assert all(6144 <= c and G.CPL - c < 3 * q and (G.CPL - c) % q == r for c, r in zip(lanes, ref))
+    print(f"{len(cases)} products (random, saturated, 16-bit keys): model == INTT(NTT(s2) o h), lanes < 3q")
+    for name, m in G.SCHED["log"] + PSCHED["log"]:
         if name in seen:
             print(f"{name:<30} bound {m:>7}  reached {seen[name]:>7}")
 

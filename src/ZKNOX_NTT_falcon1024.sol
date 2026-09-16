@@ -43,6 +43,26 @@
 //   inv t=512 bias 4q, x 1/1024  lanes <= 30722 (2.500 q)
 //   inv Barrett final            lanes <= 12677 (1.032 q)
 //   inv cond -q                  lanes <= 12288 (1.000 q)
+//   prod after B (as fw)         lanes <= 270357 (22.000 q)
+//   prod Barrett before t=4      lanes <= 16363 (1.332 q)
+//   prod fw t=4 bias 2q          lanes <= 40941 (3.332 q)
+//   prod fw t=2 bias 2q          lanes <= 65519 (5.332 q)
+//   prod Barrett before t=1      lanes <= 13259 (1.079 q)
+//   prod fw t=1 bias 2q          lanes <= 37837 (3.079 q)
+//   prod pointwise (16-bit key)  lanes <= 50125 (4.079 q)
+//   prod inv t=1 bias 5q         lanes <= 100250 (8.158 q)
+//   prod inv t=2 bias 9q         lanes <= 200500 (16.315 q)
+//   prod Barrett before inv t=4  lanes <= 15393 (1.253 q)
+//   prod inv t=4 bias 2q         lanes <= 30786 (2.505 q)
+//   prod inv t=8 bias 4q sums -4q lanes <= 49155 (4.000 q)
+//   prod inv t=16 bias 4q sums -4q lanes <= 49155 (4.000 q)
+//   prod inv t=32 bias 4q sums -4q lanes <= 49155 (4.000 q)
+//   prod inv t=64 bias 4q sums -4q lanes <= 49155 (4.000 q)
+//   prod inv t=128 bias 4q sums -4q lanes <= 49155 (4.000 q)
+//   prod inv t=256 bias 4q sums -4q lanes <= 49155 (4.000 q)
+//   prod inv t=512 bias 4q, x R/1024 lanes <= 30722 (2.500 q)
+// The product falconProduct1024 reuses A0 (no range flag), A, B, B', A' and replaces the
+// in-word kernels and the last layer (sums * 0xeab, differences * 0x2c2a).
 // Twiddle table: forward then inverse, 1,024 big-endian uint16 each, entries in
 // Montgomery form (x R mod q), read by unaligned mload at running pointers.
 pragma solidity ^0.8.25;
@@ -76,6 +96,13 @@ uint256 constant _F10_0145x2 = 0x00000000000000000000600200006002000000000000000
 uint256 constant _F10_0246x2 = 0x0000000000006002000000000000600200000000000060020000000000006002;
 uint256 constant _F10_0246x1 = 0x0000000000003001000000000000300100000000000030010000000000003001;
 uint256 constant _F10_LOx4 = 0x000000000000000000000000000000000000c0040000c0040000c0040000c004;
+uint256 constant _F10_LN1 = 0x000000000000000000000000000000000000000000000000ffffffff00000000;
+uint256 constant _F10_LN3 = 0x00000000000000000000000000000000ffffffff000000000000000000000000;
+uint256 constant _F10_LN5 = 0x0000000000000000ffffffff0000000000000000000000000000000000000000;
+uint256 constant _F10_LN7 = 0xffffffff00000000000000000000000000000000000000000000000000000000;
+uint256 constant _F10_0246x5 = 0x000000000000f005000000000000f005000000000000f005000000000000f005;
+uint256 constant _F10_0145x9 = 0x00000000000000000001b0090001b00900000000000000000001b0090001b009;
+uint256 constant _F10_CPL = 0x0000a8030000a8030000a8030000a8030000a8030000a8030000a8030000a803;
 
 bytes constant _F10_TW =
     hex"0ffb1ed02b342bc81b3010f61883261f063718ff25051492024a16c11d7225ee046e190706af03c51bbb1dfa0e9f192a28ae1fa4075d06980554285927b423dc2fb2186003e5007512af1137060d1ba00b0d193a114f22ad1be80a0416200fca2f9d01b029ff04d51dba05fe0f8f1eb7088518a4221019aa12eb069a000e0f2015c124982f8307e31d77090b12411cac0611048420d12c7d03fc0b972a141b850cf42be414a52d3a298d276625151824243d17f20cfb037328e501e905de0b232b3526010ab62fd1136a28f1275e04ab02da06e20f0e07ee17042aaa233c149a23db0e140ec627de0c6c0d8b123c098e1dbd24aa03421e171ab40d4b14e72ff40dfc06cb2a44263b27e10fe62fda214d28a10abd1caa294e179803af247205c51ad125c40e0119e92f710fdf0e641e001ffc1af60dcd264f17ca02d727731b5b1b21079d2603293f17a9017a1ebf223b22c5240d228e11c725752d901dce22751630135c186b20c427ac221309250c5705bb155421691e670a590910234c182c02e10e72125b167923560e67001003921442292311c807ac0db520f41d5c150529ed0cd11b7d04240b4f1bf422b714ed190920050b9218e713c819ea15f9011603a427f522df1dda015f245200ed16e21e0c0c4a2f5e1da208052c150eda145411fa06d42c2401540e7f1206012c2af113ce27412d602fd71cfd29d3167216160efb15b104c8211c24150f0500fa2bc9108118b625d02fde10280ada02b42268190a1a3e277928b20eaf1cbc2c6120f119250e4418c62312150f08e0194c1cf820e22a482ed21665036c1b76087709840d722401200e12fa174c0aba1c0a059a1cdd22af29a52cc1107c05982a5010e8216d074b24ee09700ee8237402ae151109db10f317e3026b03a90b121e5f0ccf093b1d4017e013c0033827dc2daa04590aa72678038007ec13d30a5e28e01ecc2f89153a0bfe190023ac2d982f7911a804f9260b2ccc26d1273725f808d624b72bb8013b119f048617ad1a5f2e5901651cc711c603d7215620a0278e1d6a2425110f14650f9f22490c591b4e10222d840d2e2cd506d9012421e90af6288a2f9c16a82e230c6d07c40400247c09ad2ab011e61a5e0e23157f1471099f21161de21f1c18fb042f04f80d922b250cdb2c5021362506266d04e50741185912702d29179226590d0b07050b3f1862145008421f1a24892c63156317c42581100c1c9b28c624ff04f701981aff0c07016820542d0f23c423592d13035221a903101eef208e2f8a073627e52f981e932e7f15e0263303f402d10ae01a14199814e411481aa020d526e7141e093415b014930535226125bd1c8c169c132e038d2d5d112b202e1a1e10ce0be408ed2fd907ab240010c82e8e02b7111326411314096b27f60a5a03490f3227f71c5021392bbc1a200fdb17ac0e6612722e4d16b81b921ad42b811ef6131e2ffc10060f440e1a197d1f021f2e2ec91a63021911d2065720232cbd1d78038a2e28254c2a6a25e70aff2dd81a9d1b43033322c7187f2a5b015c1d5a2093192702b60354161b0add0e842d450bd005f321d3101229f20ce716fd0ba21c792e6c23a3246b2e36006209de084410232c8f07340e3d0f4c1fc508b02a771f9c25b317651be421200686009f2aab133600801c9002d523c5138e18f90da6179b2adc18252e3e0d5f29121df40e6d1a021af92eb127e42e92238d20ad13f6002d0960078111190aa0069f00330af8028a0768270d26f32ecc1fa212e1102710a116ce129d2ae92d0c024e2fa601e22f8d07d61b9827220f482ef029172c621b2a08a2011c152519c90f1928632bb418570205255c2c110f1704ba11fc1fe02cb700991c24168313e124202f7a2de4054a1a1000b3159c0a5617352f99035e0c5601dd1c6f162e1eea109e012e0b4d27821aea255825af2e8110022660281d054929db14cd186e0f6f070f19311427051c207b0d4c075504cf007018fe2dcc2ff01c7605b32ff226a80d800320057529b600671cfc1f2803a802fc02781f3c201f20fd1e4e2a76256309cc079a197c27ae041410f209990e39067b102b125026052b8c0f6a0822148d07f42e4a1dd42fcc14f6094c05771e2808340c912aa022c21d9a2edb0ae704bf0d1b0a9708db07d4217827c00c8e092106d6127913851cf718ab2f0c11161bf512ec00d31f4327af244a2cd906c7092016a12693200003da1d67057903660e1f21110ac4262a07f227b80cc017f400360b40129b2e1d0c02205e24d413111b15044227360a0702c4037d194113622728082a165629f7030c127d120f0856082712c2037414fc16a3173210ed199f1d7d149529a8109c0cbc171d2a3e168826ff1fa01e6f1a901d43188007732ac318912e1b17902cb9049323f11efd09af1f222c491b9622cf1a48198e1fb2227c19c30dd910fc1202089d1b571faa15b82896246909c3096d1c681ae12956245c24dd0de20cfe17672ec10d572ffb266e2f1f10ec1e962c4119cd2fef07fc2d5b1cb92bc12d3e0e9522ef26fa065b1c000f5f13ba0aca1d48288f02f306762f1513582796112a19c01eda1d4922c82efd0dfd29fc162a287613251cf6224302c61a6c210e1c1914fb1c6a2b4c01221eb81aab2e2e09cd19b20fba16af05b216591682105208392d6512f422c10b282cf6243009d822481b630a57076a1b7f173e2b9b1570188523de2cc00279273e2d2216012573091d1b601bac13b71c1f26892325023918f62a5d25cf204c2cd0106b07cd0002247300a2182607d00e41264018db1d85182b213e26cf15a0233b0e7a2ee905ac0bfb157625dc130117831bc2258a11ec27b5187516ff0a5c27bc062c288b121e26dd0ffb1131043904cd09e2177e1f0b14d10a13128f19402db71b6f0afc170229ca0c25084d07a82aad296928a4105d075316d72162120714462c3c295216fa2b9320e12ff329671d1616570df1175d277c114a20722a0312472b2c06022e510064203719e125fd14190d541eb216c724f4146129f41eca1d522f8c2c1c17a1004f000d1b1a22b6154d11ea2cbf0b57124426731dc5227623950823213b21ed0c261b670cc5055718fd281320f3291f2d272b5608a307101c970030254b0a0004cc24de2a232e18071c2c8e2306180f0bc417dd0aec089b067402c71b5c041d230d147c05ed246a2c0503840f302b7d29f013551dc026f6128a281e007e0b691a4019eb198f062e1304002a02a108c01c3305102ed51dfb21822ead03dd292d1e071bad212703ec27fc125f00a323b711f5191f2f140baf2ea212270d22080c2c5d2eeb1a0816171c39171a246f0ffc16f81b140d4a140d24b22bdd1484233006141afc12a50f0d224c28551e3906de1bbf2c6f2ff1219a0cab19881da6218f2d2017d50cb526f125a8119a0e981aad2a4623aa26dc0dee08550f3d17961ca519d10d8c123302710a8c1e3a0d730bf40d3c0dc611422e87185806c209fe286414e014a6088e2d2a183709b22234150b10051201219d20220090161822000a3d15302a3c0b8f2c52186906b31357254407600eb40027201b082009c605bd2936220515e104450ec813b1080a20cf2cb825a7080b26961ced09c01eee2d4a01731f390c01285600282714241d1f3315e30fd31ed602a42c741cd3196513750a440da02acc1b6e1a5126cd1be3091a0f2c15611eb91b1d166915ed25212d302c0d09ce1a210182116e0069081c28cb00770f7311122cf10e582caf02ee0ca80c3d02f20fad2e9923fa15022e692b0a0b02073b13661ff50a80183d1a9e039e0b7810e727bf1bb1179f24c228fc22f609a8186f02d81d9117a828c02b1c09940afb0ecb03b1232604dc226f2b092bd2170610e5121f0eeb26621b901a8221de15a31e1b055126540b852c01283d239401de195900650777250b0e182edd2928032c22d3027d1fdf14b323a80db820621b9c1ef20bdc129708730f610eab2c2a1e3b133a2e9c01a815a218542b7b1e622ec604490b4a272b0a0908ca0930033509f62b081e59008802690c55170124031ac700781135072125a31c2e28152c810989255a2ba8025708252cc91c41182112c126c6233211a224ef2c582d96181e1f0e26261af02d530c8d211926910b1328b60e941f1905b12a691f850340065c0d5213242a6713f7254718b51d070ff30c00228f267d278a148b2c95199c012f05b90f1f130916b527211af20cef173b21bd16dc0f1003a013452152074f088815c316f70d992d4d25271fd900230a31174b1f8004382f0720fc0bec0ee52b391a50210609241de3077629d5084525a51902178c084c1e150a77143f187e1d000a251a8b24062a55011821870cc61a6109320ec317d6127c172609c121c0283117db2f5f0b8e2fff28341f9603310fb50a3205a4170b2dc80cdc097813e21c4a145514a126e40a8e1a0002df08c32d8803410c23177c1a91046618c31482289725aa149e0db926290bd1030b24d90d401d0d029c27c81faf197f19a82a4f19522047164f263401d3155611492edf04b513971b0613e80ef315952d3b0dbe130b1cdc078b19d70605220401040d3912b8112716411ed7086b1ca900ec298b2d0e077212b925371c4720a2140129a609070d12216c02c30440134802a628050012163403c0116b1f1500e20993000622aa0140189a2303221f0b240ba506ab152013992694263e0b98076b1a49105714aa27641dff1f052228163e0d85104f167315b90d32146b03b810df265211040c102b6e0348187101e61770053e288e178112be1571119210610902197905c318e423451f6506591b6c128416621f1418cf195e1b052c8d1d3f27da27ab1df21d842cf5060a19ab27d708d91c9f16c02c842d3d25fa08cb2bbf14ec1cf00b2d0fa323ff01e41d6624c12fcb180d23410849280f09d7253d0ef021e22c9b2a88129a2c271001096e196026e1293a03280bb7085210be2f2e1d15140c1eeb00f51756130a1c7c1d88292b26e0237308410e89282d2726256a22e62b42251a012612670d3f0561237027cd11d92a8a26b51b0b0035122d01b7280d1b7427df2097047509fc1db11fd6298621c826681f0f2bed08531685286726350a9e058b11b30f040fe210c52d892d052c5910d913052f9a064b2a8c2ce122810959000f2a4e138b0011023517032f912b3228ac22b50f862ae51bda16d028f2209217931b3406262ab807e409a11fff01800a520aa91517087f24b42ed31f63111719d313922e2423ab2ca3006818cc25ab1a652f4e15f12ab7021d00870be11c20197e13dd2f68034a10211e052b4720ea03f00aa52dfc17aa044d079e20e816381adc2ee5275f14d7039f06ea011120b908df1469282b00742e1f005b2db302f505181d6419331f601fda1d20105f0135090e08f428992d7725092fce296225611ee8288026a12fd41c0b0f540c74016f081d0150150815ff2194120d06ef22a201c317dc05251866225b17081c730c3c2d2c13712f811ccb05562f62297b0ee1141d189c0a4e1065058a2751103c20b521c428cd03721fde27bd26232f9f01cb0b960c5e01951388245f1904231a060f1fef0e2e2a0e243102bc217d252419e62cad2d4b16da0f6e12a72ea505a617820d3a2cce14be1564022925020a1a05970ab501d92c77128903440fde29aa1e2f2de8159e013810d310ff168421e720bd1ffb00051ce3110b0480152d146f194901b41d8f219b18552026";
@@ -686,4 +713,150 @@ function falconINTT1024(uint256[] memory a) pure returns (uint256[] memory out) 
     _f10InvA(A);
     out = new uint256[](64);
     _f10InvA0(A, out);
+}
+
+/// @dev forward t = 512 for the product: spread s2 (canonical, checked by the caller), no flag
+function _f10ProdA0(uint256[] memory c, uint256[] memory A) pure {
+    assembly ("memory-safe") {
+        let src := add(c, 32)
+        let p := add(A, 32)
+        let ks := 0
+        for { let e := add(p, 0x800) } lt(p, e) { p := add(p, 32) } {
+            let x := and(shr(ks, mload(src)), _F10_LO128)
+            x := or(and(x, _F10_L64), shl(64, and(x, _F10_H64)))
+            x := or(and(x, _F10_SA), shl(32, and(x, _F10_SB)))
+            x := or(and(x, _F10_SC), shl(16, and(x, _F10_SD)))
+            let y := and(shr(ks, mload(add(src, 0x400))), _F10_LO128)
+            y := or(and(y, _F10_L64), shl(64, and(y, _F10_H64)))
+            y := or(and(y, _F10_SA), shl(32, and(y, _F10_SB)))
+            y := or(and(y, _F10_SC), shl(16, and(y, _F10_SD)))
+            y := mul(y, 0x1ed0)
+            y := shr(16, add(y, mul(and(mul(and(y, _F10_M16), 12287), _F10_M16), 12289)))
+            mstore(p, add(x, y))
+            mstore(add(p, 0x800), sub(add(x, _F10_Q8x2), y))
+            src := add(src, shr(2, ks))
+            ks := xor(ks, 128)
+        }
+    }
+}
+
+/// @dev product kernel inside each word: forward t = 4, 2, 1, pointwise by the compact key
+///      (one REDC, R^-1 left on the values), inverse t = 1, 2, 4; output lanes < 4q
+function _f10ProdW(uint256[] memory A, uint256[] memory h, uint256 tb) pure {
+    assembly ("memory-safe") {
+        let p := add(A, 32)
+        // forward entries as in _f10FwW, the inverse ones 2,048 bytes further
+        let t1 := add(tb, 256)
+        let t2 := add(tb, 512)
+        let t3 := add(tb, 1024)
+        let kp := add(h, 32)
+        let ks := 0
+        for { let e := add(p, 0x1000) } lt(p, e) { p := add(p, 32) } {
+            let W := mload(p)
+            W := sub(W, mul(and(shr(18, mul(W, 21)), _F10_Q5), 12289))
+            let V := mul(shr(128, W), and(shr(240, mload(t1)), 0xffff))
+            V := shr(16, add(V, mul(and(mul(and(V, _F10_M16), 12287), _F10_M16), 12289)))
+            let lo := and(W, _F10_LO128)
+            W := or(add(lo, V), shl(128, sub(add(lo, _F10_LOx2), V)))
+            V := shr(224, mload(t2))
+            lo := and(shr(64, W), _F10_M0145)
+            V := or(and(mul(lo, shr(16, V)), _F10_M01), and(mul(lo, and(V, 0xffff)), _F10_M45))
+            V := shr(16, add(V, mul(and(mul(and(V, _F10_M16), 12287), _F10_M16), 12289)))
+            lo := and(W, _F10_M0145)
+            W := or(add(lo, V), shl(64, sub(add(lo, _F10_0145x2), V)))
+            W := sub(W, mul(and(shr(18, mul(W, 21)), _F10_Q5), 12289))
+            V := shr(192, mload(t3))
+            lo := and(shr(32, W), _F10_M0246)
+            V := or(
+                or(and(mul(lo, shr(48, V)), _F10_LN0), and(mul(lo, and(shr(32, V), 0xffff)), _F10_LN2)),
+                or(and(mul(lo, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(lo, and(V, 0xffff)), _F10_LN6))
+            )
+            V := shr(16, add(V, mul(and(mul(and(V, _F10_M16), 12287), _F10_M16), 12289)))
+            lo := and(W, _F10_M0246)
+            W := or(add(lo, V), shl(32, sub(add(lo, _F10_0246x2), V)))
+            V := shr(ks, mload(kp))
+            W := or(
+                or(
+                    or(and(mul(W, and(V, 0xffff)), _F10_LN0), and(mul(W, and(shr(16, V), 0xffff)), _F10_LN1)),
+                    or(and(mul(W, and(shr(32, V), 0xffff)), _F10_LN2), and(mul(W, and(shr(48, V), 0xffff)), _F10_LN3))
+                ),
+                or(
+                    or(and(mul(W, and(shr(64, V), 0xffff)), _F10_LN4), and(mul(W, and(shr(80, V), 0xffff)), _F10_LN5)),
+                    or(and(mul(W, and(shr(96, V), 0xffff)), _F10_LN6), and(mul(W, and(shr(112, V), 0xffff)), _F10_LN7))
+                )
+            )
+            W := shr(16, add(W, mul(and(mul(and(W, _F10_M16), 12287), _F10_M16), 12289)))
+            V := shr(192, mload(add(t3, 2048)))
+            lo := and(W, _F10_M0246)
+            W := and(shr(32, W), _F10_M0246)
+            let d := sub(add(lo, _F10_0246x5), W)
+            lo := add(lo, W)
+            W := or(
+                or(and(mul(d, shr(48, V)), _F10_LN0), and(mul(d, and(shr(32, V), 0xffff)), _F10_LN2)),
+                or(and(mul(d, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(d, and(V, 0xffff)), _F10_LN6))
+            )
+            W := shr(16, add(W, mul(and(mul(and(W, _F10_M16), 12287), _F10_M16), 12289)))
+            W := or(lo, shl(32, W))
+            V := shr(224, mload(add(t2, 2048)))
+            lo := and(W, _F10_M0145)
+            W := and(shr(64, W), _F10_M0145)
+            d := sub(add(lo, _F10_0145x9), W)
+            lo := add(lo, W)
+            W := or(and(mul(d, shr(16, V)), _F10_M01), and(mul(d, and(V, 0xffff)), _F10_M45))
+            W := shr(16, add(W, mul(and(mul(and(W, _F10_M16), 12287), _F10_M16), 12289)))
+            W := or(lo, shl(64, W))
+            W := sub(W, mul(and(shr(18, mul(W, 21)), _F10_Q5), 12289))
+            V := and(shr(240, mload(add(t1, 2048))), 0xffff)
+            lo := and(W, _F10_LO128)
+            W := shr(128, W)
+            d := mul(sub(add(lo, _F10_LOx2), W), V)
+            d := shr(16, add(d, mul(and(mul(and(d, _F10_M16), 12287), _F10_M16), 12289)))
+            mstore(p, or(add(lo, W), shl(128, d)))
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
+            kp := add(kp, shr(2, ks))
+            ks := xor(ks, 128)
+        }
+    }
+}
+
+/// @dev last inverse layer of the product: t = 512 with 1024^-1 and R folded, lanes stored
+///      as 3q + 6144 - s1_i with s1_i < 3q
+function _f10ProdA0Inv(uint256[] memory A) pure {
+    assembly ("memory-safe") {
+        let p := add(A, 32)
+        for { let e := add(p, 0x800) } lt(p, e) { p := add(p, 32) } {
+            let x := mload(p)
+            let y := mload(add(p, 0x800))
+            let s := mul(add(x, y), 0xeab)
+            s := shr(16, add(s, mul(and(mul(and(s, _F10_M16), 12287), _F10_M16), 12289)))
+            mstore(p, sub(_F10_CPL, s))
+            s := mul(sub(add(x, _F10_Q8x4), y), 0x2c2a)
+            s := shr(16, add(s, mul(and(mul(and(s, _F10_M16), 12287), _F10_M16), 12289)))
+            mstore(add(p, 0x800), sub(_F10_CPL, s))
+        }
+    }
+}
+
+/// @notice s1 = INTT(NTT(s2) o h) for Falcon-1024: s2 compact and canonical (64 words of
+///         16-bit fields), h the compact NTT-domain key (16-bit fields, not range-checked).
+///         Result PACKED on eight 32-bit lanes per word (coefficient 8w + j in lane j of
+///         word w), each lane holding 3q + 6144 - x with x < 3q congruent to s1_i, the
+///         term the norm sampler of ZKNOX_falcon1024_core.sol adds to a hash candidate.
+function falconProduct1024(uint256[] memory s2, uint256[] memory h) pure returns (uint256[] memory A) {
+    require(s2.length == 64 && h.length == 64, "compact length");
+    bytes memory tw = _F10_TW;
+    uint256 tb;
+    assembly ("memory-safe") {
+        tb := add(tw, 32)
+    }
+    A = new uint256[](128);
+    _f10ProdA0(s2, A);
+    _f10FwA(A);
+    _f10FwB(A, tb);
+    _f10ProdW(A, h, tb);
+    _f10InvB(A, tb + 2048);
+    _f10InvA(A);
+    _f10ProdA0Inv(A);
 }

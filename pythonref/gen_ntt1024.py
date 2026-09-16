@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # gen_ntt1024.py -- emits src/ZKNOX_NTT_falcon1024.sol: the Falcon-1024 forward
-# and inverse NTT (q = 12289, n = 1024) on EIGHT 32-bit lanes per word, Montgomery
-# R = 2^16, same machinery as gen_ntt8.py (Falcon-512).
+# and inverse NTT (q = 12289, n = 1024) and the fused product s1 = INTT(NTT(s2) o h)
+# on EIGHT 32-bit lanes per word, Montgomery R = 2^16, same machinery as gen_ntt8.py
+# (Falcon-512).
 #
 #   python3 pythonref/gen_ntt1024.py > src/ZKNOX_NTT_falcon1024.sol && forge fmt src/ZKNOX_NTT_falcon1024.sol
 #   python3 pythonref/gen_ntt1024.py --schedule      (prints the bound analysis)
@@ -120,6 +121,71 @@ def schedule():
 
 
 SCHED = schedule()
+
+
+def schedule_product():
+    """lane bounds of the fused chain s1 = INTT(NTT(s2) o h): forward layers as in
+    schedule() down to t = 8, then in the word: Barrett, t = 4, 2, Barrett, t = 1,
+    pointwise by the raw 16-bit key fields (one REDC, a factor R^-1 stays on the
+    values), inverse t = 1, 2, Barrett, t = 4; B' and A' as schedule(); t = 512
+    folded with 1024^-1 and the missing R, output lanes < 3q (stored complemented)"""
+    P = {}
+    log = []
+    M = 270357
+    assert M == dict(SCHED["log"])["fw t=8 bias 5q"]
+    log.append(("prod after B (as fw)", M))
+    M = barrett_max(M)
+    log.append(("prod Barrett before t=4", M))
+    ks = []
+    for layer in ("4", "2"):
+        t = redc_max(M * ZMAX)
+        k = ceil_q(t)
+        ks.append(k)
+        M += k * q
+        log.append((f"prod fw t={layer} bias {k}q", M))
+    M = barrett_max(M)
+    log.append(("prod Barrett before t=1", M))
+    t = redc_max(M * ZMAX)
+    k = ceil_q(t)
+    ks.append(k)
+    M += k * q
+    log.append((f"prod fw t=1 bias {k}q", M))
+    P["fw"] = ks
+    M = redc_max(M * 0xFFFF)  # key fields are not range-checked
+    log.append(("prod pointwise (16-bit key)", M))
+    inv = []
+    for layer in ("1", "2", "BAR", "4"):
+        if layer == "BAR":
+            M = barrett_max(M)
+            log.append(("prod Barrett before inv t=4", M))
+            continue
+        k = ceil_q(M + 1)
+        t = redc_max((M + k * q) * ZMAX)
+        assert 2 * M < LANE
+        M = max(2 * M, t)
+        inv.append(k)
+        log.append((f"prod inv t={layer} bias {k}q", M))
+    P["inv"] = inv
+    assert M < 4 * q  # entry condition of B' / A' (bias 4q, sums -4q)
+    for (k, red), layer in zip(SCHED["inv"][3:], ("8", "16", "32", "64", "128", "256")):
+        assert red and k == 4
+        t = redc_max((M + k * q) * ZMAX)
+        assert 2 * M < 8 * q
+        M = max(4 * q - 1, t)
+        log.append((f"prod inv t={layer} bias 4q sums -4q", M))
+    k = ceil_q(M + 1)
+    P["inv512"] = k
+    M = max(redc_max(2 * M * ZMAX), redc_max((M + k * q) * ZMAX))
+    assert M < 3 * q
+    log.append((f"prod inv t=512 bias {k}q, x R/1024", M))
+    P["log"] = log
+    return P
+
+
+PSCHED = schedule_product()
+CNR = (NINV * R * R) % q  # REDC(REDC-pointwise value * CNR) = s / 1024
+DNR = (INV[1] * NINV * R * R) % q
+CPL = 3 * q + 6144
 
 
 # ---------------------------------------------------------------- emitters
@@ -338,15 +404,15 @@ FWK = SCHED["fw"]  # 10 biases: 512, 256, 128, 64, 32, 16, 8, 4, 2, 1
 INVK = SCHED["inv"]  # 9 (bias, reduce): 1, 2, 4, 8, 16, 32, 64, 128, 256
 
 
-def fw_A0():
+def fw_A0(check=True):
     k = FWK[0]
     L = [
         "let x := and(shr(ks, mload(src)), _F10_LO128)",
         *spread("x"),
-        "bad := or(bad, and(add(x, _F10_CQ17), _F10_G17))",
+        *(["bad := or(bad, and(add(x, _F10_CQ17), _F10_G17))"] if check else []),
         "let y := and(shr(ks, mload(add(src, 0x400))), _F10_LO128)",
         *spread("y"),
-        "bad := or(bad, and(add(y, _F10_CQ17), _F10_G17))",
+        *(["bad := or(bad, and(add(y, _F10_CQ17), _F10_G17))"] if check else []),
         f"y := mul(y, {hex(FWM[1])})",
         RED("y"),
         "mstore(p, add(x, y))",
@@ -443,6 +509,89 @@ def inv_A0():
         CONDQ("s"),
         *gather("s"),
         "mstore(add(op, 0x400), or(mload(add(op, 0x400)), shl(ks, s)))",
+    ]
+
+
+def fw_t4(k):
+    return [
+        "let V := mul(shr(128, W), and(shr(240, mload(t1)), 0xffff))",
+        RED("V"),
+        "let lo := and(W, _F10_LO128)",
+        f"W := or(add(lo, V), shl(128, sub(add(lo, {C(f'_F10_LOx{k}', lanes(k * q, range(4)))}), V)))",
+    ]
+
+
+def fw_t2(k):
+    return [
+        "V := shr(224, mload(t2))",
+        "lo := and(shr(64, W), _F10_M0145)",
+        "V := or(and(mul(lo, shr(16, V)), _F10_M01), and(mul(lo, and(V, 0xffff)), _F10_M45))",
+        RED("V"),
+        "lo := and(W, _F10_M0145)",
+        f"W := or(add(lo, V), shl(64, sub(add(lo, {C(f'_F10_0145x{k}', lanes(k * q, (0, 1, 4, 5)))}), V)))",
+    ]
+
+
+def fw_t1(k):
+    return [
+        "V := shr(192, mload(t3))",
+        "lo := and(shr(32, W), _F10_M0246)",
+        "V := or(or(and(mul(lo, shr(48, V)), _F10_LN0), and(mul(lo, and(shr(32, V), 0xffff)), _F10_LN2)), or(and(mul(lo, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(lo, and(V, 0xffff)), _F10_LN6)))",
+        RED("V"),
+        "lo := and(W, _F10_M0246)",
+        f"W := or(add(lo, V), shl(32, sub(add(lo, {C(f'_F10_0246x{k}', lanes(k * q, (0, 2, 4, 6)))}), V)))",
+    ]
+
+
+def prod_inword():
+    k4, k2, k1 = PSCHED["fw"]
+    i1, i2, i4 = PSCHED["inv"]
+    L = ["let W := mload(p)", BAR("W"), *fw_t4(k4), *fw_t2(k2), BAR("W"), *fw_t1(k1)]
+    L += ["V := shr(ks, mload(kp))"]
+    terms = [f"and(mul(W, {'and(V, 0xffff)' if j == 0 else f'and(shr({16 * j}, V), 0xffff)'}), _F10_LN{j})" for j in range(8)]
+    for j in range(8):
+        C(f"_F10_LN{j}", 0xFFFFFFFF << (32 * j))
+    L += [f"W := or(or(or({terms[0]}, {terms[1]}), or({terms[2]}, {terms[3]})), or(or({terms[4]}, {terms[5]}), or({terms[6]}, {terms[7]})))", RED("W")]
+    L += [
+        "V := shr(192, mload(add(t3, 2048)))",
+        "lo := and(W, _F10_M0246)",
+        "W := and(shr(32, W), _F10_M0246)",
+        f"let d := sub(add(lo, {C(f'_F10_0246x{i1}', lanes(i1 * q, (0, 2, 4, 6)))}), W)",
+        "lo := add(lo, W)",
+        "W := or(or(and(mul(d, shr(48, V)), _F10_LN0), and(mul(d, and(shr(32, V), 0xffff)), _F10_LN2)), or(and(mul(d, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(d, and(V, 0xffff)), _F10_LN6)))",
+        RED("W"),
+        "W := or(lo, shl(32, W))",
+        "V := shr(224, mload(add(t2, 2048)))",
+        "lo := and(W, _F10_M0145)",
+        "W := and(shr(64, W), _F10_M0145)",
+        f"d := sub(add(lo, {C(f'_F10_0145x{i2}', lanes(i2 * q, (0, 1, 4, 5)))}), W)",
+        "lo := add(lo, W)",
+        "W := or(and(mul(d, shr(16, V)), _F10_M01), and(mul(d, and(V, 0xffff)), _F10_M45))",
+        RED("W"),
+        "W := or(lo, shl(64, W))",
+        BAR("W"),
+        "V := and(shr(240, mload(add(t1, 2048))), 0xffff)",
+        "lo := and(W, _F10_LO128)",
+        "W := shr(128, W)",
+        f"d := mul(sub(add(lo, {C(f'_F10_LOx{i4}', lanes(i4 * q, range(4)))}), W), V)",
+        RED("d"),
+        "mstore(p, or(add(lo, W), shl(128, d)))",
+    ]
+    return L
+
+
+def prod_A0():
+    k = PSCHED["inv512"]
+    C("_F10_CPL", rep8(CPL))
+    return [
+        "let x := mload(p)",
+        "let y := mload(add(p, 0x800))",
+        f"let s := mul(add(x, y), {hex(CNR)})",
+        RED("s"),
+        "mstore(p, sub(_F10_CPL, s))",
+        f"s := mul(sub(add(x, {BQ8(k)}), y), {hex(DNR)})",
+        RED("s"),
+        "mstore(add(p, 0x800), sub(_F10_CPL, s))",
     ]
 
 
@@ -646,7 +795,77 @@ function falconINTT1024(uint256[] memory a) pure returns (uint256[] memory out) 
     _f10InvA0(A, out);
 }}
 """
-    sched = "\n".join(f"//   {name:<28} lanes <= {m} ({m / q:.3f} q)" for name, m in SCHED["log"])
+    body += f"""
+/// @dev forward t = 512 for the product: spread s2 (canonical, checked by the caller), no flag
+function _f10ProdA0(uint256[] memory c, uint256[] memory A) pure {{
+    assembly ("memory-safe") {{
+        let src := add(c, 32)
+        let p := add(A, 32)
+        let ks := 0
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(fw_A0(check=False), 12)}
+            src := add(src, shr(2, ks))
+            ks := xor(ks, 128)
+        }}
+    }}
+}}
+
+/// @dev product kernel inside each word: forward t = 4, 2, 1, pointwise by the compact key
+///      (one REDC, R^-1 left on the values), inverse t = 1, 2, 4; output lanes < 4q
+function _f10ProdW(uint256[] memory A, uint256[] memory h, uint256 tb) pure {{
+    assembly ("memory-safe") {{
+        let p := add(A, 32)
+        // forward entries as in _f10FwW, the inverse ones 2,048 bytes further
+        let t1 := add(tb, 256)
+        let t2 := add(tb, 512)
+        let t3 := add(tb, 1024)
+        let kp := add(h, 32)
+        let ks := 0
+        for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(prod_inword(), 12)}
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
+            kp := add(kp, shr(2, ks))
+            ks := xor(ks, 128)
+        }}
+    }}
+}}
+
+/// @dev last inverse layer of the product: t = 512 with 1024^-1 and R folded, lanes stored
+///      as 3q + 6144 - s1_i with s1_i < 3q
+function _f10ProdA0Inv(uint256[] memory A) pure {{
+    assembly ("memory-safe") {{
+        let p := add(A, 32)
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(prod_A0(), 12)}
+        }}
+    }}
+}}
+
+/// @notice s1 = INTT(NTT(s2) o h) for Falcon-1024: s2 compact and canonical (64 words of
+///         16-bit fields), h the compact NTT-domain key (16-bit fields, not range-checked).
+///         Result PACKED on eight 32-bit lanes per word (coefficient 8w + j in lane j of
+///         word w), each lane holding 3q + 6144 - x with x < 3q congruent to s1_i, the
+///         term the norm sampler of ZKNOX_falcon1024_core.sol adds to a hash candidate.
+function falconProduct1024(uint256[] memory s2, uint256[] memory h) pure returns (uint256[] memory A) {{
+    require(s2.length == 64 && h.length == 64, "compact length");
+    bytes memory tw = _F10_TW;
+    uint256 tb;
+    assembly ("memory-safe") {{
+        tb := add(tw, 32)
+    }}
+    A = new uint256[](128);
+    _f10ProdA0(s2, A);
+    _f10FwA(A);
+    _f10FwB(A, tb);
+    _f10ProdW(A, h, tb);
+    _f10InvB(A, tb + 2048);
+    _f10InvA(A);
+    _f10ProdA0Inv(A);
+}}
+"""
+    sched = "\n".join(f"//   {name:<28} lanes <= {m} ({m / q:.3f} q)" for name, m in SCHED["log"] + PSCHED["log"])
     consts = "\n".join(f"uint256 constant {k} = {hx(v)};" for k, v in CONSTS.items())
     return f"""// SPDX-License-Identifier: MIT
 // Copyright (C) 2026 - ZKNOX
@@ -667,6 +886,8 @@ function falconINTT1024(uint256[] memory a) pure returns (uint256[] memory out) 
 //            with 1024^-1 folded (sums * {hex(CN)}, differences * {hex(DN)})
 // Lane bounds, asserted by the generator:
 {sched}
+// The product falconProduct1024 reuses A0 (no range flag), A, B, B', A' and replaces the
+// in-word kernels and the last layer (sums * {hex(CNR)}, differences * {hex(DNR)}).
 // Twiddle table: forward then inverse, 1,024 big-endian uint16 each, entries in
 // Montgomery form (x R mod q), read by unaligned mload at running pointers.
 pragma solidity ^0.8.25;
@@ -681,6 +902,8 @@ if __name__ == "__main__":
     if "--schedule" in sys.argv:
         for name, m in SCHED["log"]:
             print(f"{name:<30} {m:>7}  {m / q:.3f} q")
-        print("fw biases", FWK, "inv", INVK, "inv512", SCHED["inv512"])
+        for name, m in PSCHED["log"]:
+            print(f"{name:<30} {m:>7}  {m / q:.3f} q")
+        print("fw biases", FWK, "inv", INVK, "inv512", SCHED["inv512"], "product", PSCHED["fw"], PSCHED["inv"], PSCHED["inv512"])
     else:
         sys.stdout.write(emit())

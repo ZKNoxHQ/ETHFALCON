@@ -1,5 +1,59 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-16 — vérifieur Falcon-1024 (`ZKNOX_falcon1024`)
+
+### Measured
+| | gas |
+|---|---:|
+| `ZKNOX_falcon1024.verify`, KAT NIST 0 | **1 254 638** |
+| moyenne KAT 0..9 / maximum | 1 274 081 / 1 336 599 |
+| `falconProduct1024` seul, appel externe (ABI compris) | 375 883 |
+| `_s2NormCompact1024` seul, appel externe | 34 285 |
+
+Même helper résident que `ZKNOX_falcon8` (code hash `0x661c9f13…3f409155`).
+17 à 19 permutations par vérification sur les KAT 0..9 (une d'absorption), soit
+~55 % du total ; le produit fusionné ~27 %. Falcon-512 (`ZKNOX_falcon8`) :
+650 210.
+
+168/168 tests sur tout le dépôt, dont 9 dans `test/falcon1024.t.sol` :
+- les 100 vecteurs KAT NIST round 3 de Falcon-1024 acceptés, norme exacte égale
+  à celle du modèle Python ;
+- 12 cas aléatoires (sels, messages de 0 à 200 octets dont 96 pour une frontière
+  de bloc, s2 d'amplitudes 0 à 6144, bords de centrage 6144/6145, clés 16 bits
+  non réduites) : norme exacte égale au modèle ;
+- produit fusionné contre `falconINTT1024(falconNTT1024(s2) ∘ h)` (transformées
+  de l'étape 1, validées contre noble), saturé, clé 0xffff, fuzz 256 runs ;
+- altérations (message, sel, s2, clé, clé d'un autre KAT), champ s2 ≥ q congru
+  à une signature valide, longueurs, liaison du helper.
+
+### Ajouts
+- `pythonref/gen_ntt1024.py` émet aussi `falconProduct1024` : A0 (sans contrôle
+  de plage, s2 déjà vérifié), A, B, puis dans le mot Barrett, t = 4, 2, Barrett,
+  t = 1, produit par les champs bruts de la clé (un REDC), inverse t = 1, 2,
+  Barrett, t = 4 ; B' et A' de l'étape 1 ; t = 512 avec 1024⁻¹ et le R manquant
+  repliés, lanes stockées en 3q + 6144 − s1 (s1 < 3q). Planning dérivé et asserté
+  comme à l'étape 1, imprimé en tête du fichier.
+- `src/ZKNOX_falcon1024_core.sol` : sampler de `falcon_core8` à 1 024 sorties
+  (bloc sans contrôle de sortie si i < 957, chemin groupé si i < 1021), norme s2
+  SWAR sur 64 mots, `falcon1024_norm` (norme exacte, max si s2 hors plage) et
+  `falcon1024_core`, borne 70 265 242.
+- `src/ZKNOX_falcon1024.sol` : même interface et même liaison que
+  `ZKNOX_falcon8`, s2 et ntth de 64 mots.
+- `pythonref/model_ntt1024.py` rejoue aussi le produit lane par lane (bornes,
+  lanes < 3q, égalité à INTT(NTT(s2) ∘ h)).
+- `pythonref/gen_falcon1024_vectors.py` : décode `test/falcon1024-KAT.rsp`
+  (sha256 vérifié, archive NIST vendorisée par noble) vers les entrées du
+  vérifieur, calcule les normes par un modèle scalaire indépendant (hashlib
+  SHAKE256), écrit `test/falcon1024_vectors.json`.
+- `jsref/check_falcon1024_kat.mjs` : les 100 triplets repassés dans
+  `falcon1024.verify` de noble (forme détachée 0x3A), messages altérés rejetés.
+
+### Non fait
+- Aucune optimisation propre à n = 1024 : biais et réductions repris de
+  Falcon-512, deux Barrett dans l'aller du noyau intra-mot.
+- Signeur ZKNOX (python, Ledger) en Falcon-1024 non confronté : seules les
+  signatures NIST et noble le sont.
+
 ## [unreleased] — 2026-09-16 — Falcon-1024, étape 1 : NTT et NTT inverse (`ZKNOX_NTT_falcon1024.sol`)
 
 ### Measured

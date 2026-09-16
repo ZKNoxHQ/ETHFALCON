@@ -293,3 +293,33 @@ mots de huit coefficients, et le traitement des champs d'entrée ≥ q.
 - Les vecteurs noble ne passent pas par le signeur : la convention de ntth
   côté signeur Falcon-1024 (python, Ledger) reste à confronter à l'étape 2.
 
+## ADR-008 — Vérifieur Falcon-1024 : contrat séparé, même helper, KAT NIST comme référence
+
+**Contexte**
+L'étape 1 (ADR-007) a fixé la convention NTT et livré les transformées. Il reste
+le produit fusionné, le hash-to-point à 1 024 sorties, la norme et le contrat.
+
+**Décision**
+1. Contrat séparé `ZKNOX_falcon1024`, interface de `ZKNOX_falcon8` (message,
+   sel de 40 octets, s2 et ntth compacts de 64 mots), lié par code hash au même
+   helper Keccak résident : un seul helper déployé pour les deux tailles.
+2. Produit fusionné généré dans le même fichier que les transformées ; seuls le
+   noyau intra-mot et la dernière couche diffèrent. Les champs de la clé ne sont
+   pas contrôlés (comme en 512) : le noyau accepte 16 bits, borne assertée.
+3. Sampler et norme repris de `falcon_core8`, seuls les seuils de sortie
+   changent ; conventions NIST round 3 inchangées (SHAKE256(sel ‖ message),
+   candidats 16 bits big-endian < 5q), borne ⌊β²⌋ = 70 265 242.
+4. Référence d'acceptation : les 100 KAT NIST Falcon-1024 (même archive que le
+   fichier 512 déjà présent, identique octet pour octet à celui vendorisé par
+   noble), décodés hors chaîne ; normes exactes par un modèle Python
+   indépendant ; triplets revérifiés par noble.
+5. `falcon1024_norm` exposé (norme exacte) pour tester l'égalité de norme
+   plutôt que la seule décision.
+
+**Conséquences**
+- 1 254 638 gas sur le KAT 0, ~1,93x Falcon-512 ; les permutations (17 à 19)
+  en font plus de la moitié, le produit ~27 %.
+- La convention ntth est validée par les KAT NIST et par noble ; un signeur qui
+  fournirait ntth dans une autre convention (autre racine, autre ordre) serait
+  rejeté, ce qui reste à vérifier pour le signeur Ledger en Falcon-1024.
+
