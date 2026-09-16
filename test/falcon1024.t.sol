@@ -5,6 +5,154 @@ import {Test, console} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon1024.sol";
 import "../src/ZKNOX_falcon1024_core.sol";
 import "../src/ZKNOX_NTT_falcon1024.sol";
+import {_absorbResident, _f1600Resident} from "../src/ZKNOX_falcon_core8.sol";
+
+/// @notice the previous sampler (four candidates per state lane, first Falcon-1024
+///         delivery), reference of the differential tests below; hashToPointNIST(salt, msgHash) for n = 1024 consumed on the fly: returns
+///         sum over i of centred(h_i - s1_i)^2, with s1 packed on eight lanes
+///         as 3q + 6144 - s1_i (falconProduct1024).
+function hashToPointNormS1_1024_lane4(bytes memory salt, bytes memory msgHash, address helper, uint256[] memory s1)
+    view
+    returns (uint256 norm)
+{
+    require(s1.length == 128, "s1 length");
+    // replicated state
+    uint256[25] memory buf;
+    uint256 st;
+    assembly ("memory-safe") {
+        st := buf
+    }
+    _absorbResident(st, abi.encodePacked(salt, msgHash), helper);
+    uint256 i;
+    uint256 s1p;
+    assembly ("memory-safe") {
+        s1p := add(s1, 32)
+    }
+    while (true) {
+        assembly ("memory-safe") {
+            // A block holds at most 68 candidates: when it starts below 957 outputs
+            // it cannot reach 1024, so the block runs without output-bound checks.
+            switch lt(i, 957)
+            case 1 {
+                for { let lp := st } lt(lp, add(st, 544)) { lp := add(lp, 32) } {
+                    let lane := mload(lp)
+                    lane := or(shr(8, and(lane, 0xff00ff00ff00ff00)), shl(8, and(lane, 0x00ff00ff00ff00ff)))
+                    switch and(and(add(and(lane, 0x7fff7fff7fff7fff), 0x0ffb0ffb0ffb0ffb), lane), 0x8000800080008000)
+                    case 0 {
+                        // all four below 5q: the four candidates spread to 32-bit spacing (two
+                        // mask/shift steps) are added to the four complement lanes of s1 in one
+                        // add, then each sum is reduced, centred and squared
+                        let ptr := add(s1p, shl(5, shr(3, i)))
+                        let sh := shl(5, and(i, 7))
+                        let x := shr(sh, mload(ptr))
+                        if gt(sh, 128) { x := or(x, shl(sub(256, sh), mload(add(ptr, 32)))) }
+                        let y := or(and(lane, 0xffffffff), shl(32, and(lane, 0xffffffff00000000)))
+                        x := add(
+                            x,
+                            or(
+                                and(y, 0x000000000000ffff000000000000ffff),
+                                shl(16, and(y, 0x00000000ffff000000000000ffff0000))
+                            )
+                        )
+                        let d := sub(mod(and(x, 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        d := sub(mod(and(shr(32, x), 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        d := sub(mod(and(shr(64, x), 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        d := sub(mod(and(shr(96, x), 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        i := add(i, 4)
+                    }
+                    default {
+                        for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                            let v := and(shr(shl(4, k), lane), 0xffff)
+                            if lt(v, 61445) {
+                                let d :=
+                                    sub(
+                                        mod(
+                                            add(
+                                                v,
+                                                and(
+                                                    shr(shl(5, and(i, 7)), mload(add(s1p, shl(5, shr(3, i))))),
+                                                    0xffffffff
+                                                )
+                                            ),
+                                            12289
+                                        ),
+                                        6144
+                                    )
+                                norm := add(norm, mul(d, d))
+                                i := add(i, 1)
+                            }
+                        }
+                    }
+                }
+            }
+            default {
+                for { let lp := st } lt(lp, add(st, 544)) { lp := add(lp, 32) } {
+                    let lane := mload(lp)
+                    lane := or(shr(8, and(lane, 0xff00ff00ff00ff00)), shl(8, and(lane, 0x00ff00ff00ff00ff)))
+                    switch and(
+                        iszero(
+                            and(and(add(and(lane, 0x7fff7fff7fff7fff), 0x0ffb0ffb0ffb0ffb), lane), 0x8000800080008000)
+                        ),
+                        lt(i, 1021)
+                    )
+                    case 1 {
+                        let ptr := add(s1p, shl(5, shr(3, i)))
+                        let sh := shl(5, and(i, 7))
+                        let x := shr(sh, mload(ptr))
+                        if gt(sh, 128) { x := or(x, shl(sub(256, sh), mload(add(ptr, 32)))) }
+                        let y := or(and(lane, 0xffffffff), shl(32, and(lane, 0xffffffff00000000)))
+                        x := add(
+                            x,
+                            or(
+                                and(y, 0x000000000000ffff000000000000ffff),
+                                shl(16, and(y, 0x00000000ffff000000000000ffff0000))
+                            )
+                        )
+                        let d := sub(mod(and(x, 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        d := sub(mod(and(shr(32, x), 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        d := sub(mod(and(shr(64, x), 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        d := sub(mod(and(shr(96, x), 0xffffffff), 12289), 6144)
+                        norm := add(norm, mul(d, d))
+                        i := add(i, 4)
+                    }
+                    default {
+                        for { let k := 0 } lt(k, 4) { k := add(k, 1) } {
+                            let v := and(shr(shl(4, k), lane), 0xffff)
+                            if and(lt(v, 61445), lt(i, 1024)) {
+                                let d :=
+                                    sub(
+                                        mod(
+                                            add(
+                                                v,
+                                                and(
+                                                    shr(shl(5, and(i, 7)), mload(add(s1p, shl(5, shr(3, i))))),
+                                                    0xffffffff
+                                                )
+                                            ),
+                                            12289
+                                        ),
+                                        6144
+                                    )
+                                norm := add(norm, mul(d, d))
+                                i := add(i, 1)
+                            }
+                        }
+                    }
+                    if eq(i, 1024) { lp := add(st, 512) }
+                }
+            }
+        }
+        if (i == 1024) break;
+        _f1600Resident(st, helper);
+    }
+}
 
 /// Falcon-1024 verifier: the fused product against the standalone transforms
 /// (themselves checked against noble, test/ntt1024.t.sol), the exact squared norm
@@ -110,6 +258,41 @@ contract Falcon1024Test is Test {
         for (uint256 k = 0; k < 12; k++) {
             Vec memory v = _vec("random", k);
             assertEq(falcon1024_norm(v.salt, v.msg, helper, v.s2, v.ntth), v.norm, vm.toString(k));
+        }
+    }
+
+    /// complement lanes 3q + 6144 - x for arbitrary x < 3q (the sampler's whole input domain)
+    function _s1Lanes(uint256 seed) internal pure returns (uint256[] memory s1) {
+        s1 = new uint256[](128);
+        for (uint256 w = 0; w < 128; w++) {
+            uint256 word;
+            for (uint256 j = 0; j < 8; j++) {
+                uint256 x = uint256(keccak256(abi.encodePacked(seed, w, j))) % (3 * Q);
+                if (seed % 5 == 1) x = 3 * Q - 1;
+                if (seed % 5 == 2) x = 0;
+                word |= (3 * Q + 6144 - x) << (32 * j);
+            }
+            s1[w] = word;
+        }
+    }
+
+    function testFuzz_sampler1024_matches_lane4(uint256 seed, bytes memory m) public view {
+        bytes memory salt = abi.encodePacked(keccak256(abi.encode(seed)), bytes8(uint64(seed)));
+        uint256[] memory s1 = _s1Lanes(seed);
+        assertEq(hashToPointNormS1_1024(salt, m, helper, s1), hashToPointNormS1_1024_lane4(salt, m, helper, s1));
+    }
+
+    function test_sampler1024_matches_lane4_lengths() public view {
+        for (uint256 len = 0; len < 300; len += 23) {
+            bytes memory m = new bytes(len);
+            for (uint256 j = 0; j < len; j++) {
+                m[j] = bytes1(uint8(j * 7 + len));
+            }
+            for (uint256 s = 0; s < 5; s++) {
+                bytes memory salt = abi.encodePacked(keccak256(abi.encode(s, len)), bytes8(0));
+                uint256[] memory s1 = _s1Lanes(s * 1000 + len);
+                assertEq(hashToPointNormS1_1024(salt, m, helper, s1), hashToPointNormS1_1024_lane4(salt, m, helper, s1));
+            }
         }
     }
 

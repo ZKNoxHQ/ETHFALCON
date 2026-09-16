@@ -1,5 +1,64 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-16 — Falcon-1024 : bornes exactes par coefficient, sampler à huit candidats — 1 254 638 → 1 185 270
+
+### Measured
+| | avant | après |
+|---|---:|---:|
+| `ZKNOX_falcon1024.verify`, KAT NIST 0 | 1 254 638 | **1 185 270** (−5,5 %) |
+| moyenne KAT 0..9 / maximum | 1 274 081 / 1 336 599 | **1 204 774** / 1 269 164 |
+| cœur, moyenne KAT 0..9 (`test/profile1024.t.sol`) | 1 251 411 | 1 182 104 |
+| dont produit fusionné | 334 961 | 319 937 |
+| dont hash-to-point + norme (permutations comprises) | 892 741 | 838 457 |
+| `falconINTT1024` | 207 756 | 193 580 |
+| `falconNTT1024` | 182 550 | 182 550 |
+
+Les ~17,7 permutations (~710 k, 40 134 l'appel chaud) ne bougent pas : hors
+permutations, le vérifieur passe de ~544 k à ~475 k (−12,7 %). 171/171 tests.
+
+### Produit : planning exact (`pythonref/sched1024.py`)
+L'analyse uniforme (une borne par couche, twiddle q − 1) surestimait la
+croissance : la lane basse d'un papillon CT reçoit t, pas le biais. Les bornes
+sont maintenant suivies par coefficient avec le twiddle réel de chaque papillon,
+et une recherche par séparation-évaluation place les réductions au coût minimal
+(Barrett de tous les mots = 128 opérations-mots, sommes d'une couche alignée =
+64) :
+- produit : Barrett avant t = 1 seulement dans l'aller (biais 5q et 6q à t = 4
+  et t = 2 depuis 20q), Barrett avant l'inverse t = 4, sommes réduites à t = 32
+  et t = 256, plus aucun −4q conditionnel ; 768 → 384 opérations-mots, dernière
+  couche à biais 2q, s1 ≤ 19 540 ;
+- INTT autonome : sommes réduites à t = 8 et t = 64 (384 → 128) ;
+- NTT autonome : même nombre de Barrett qu'avant, biais différents.
+Les réductions des passes B' et A' sont des Barrett (M = 21) sur les sommes, en
+instructions séparées. Le produit a ses propres passes B'/A'
+(`_f10ProdInvB`, `_f10ProdInvA`), les biais n'étant pas ceux de l'INTT.
+`model_ntt1024.py` rejoue les trois plannings sur des valeurs concrètes et
+vérifie chaque lane contre sa borne après chaque étape.
+
+### Sampler : huit candidats par groupe
+Deux lanes d'état à la fois. Avec au plus un rejet (91,5 % des paires), le
+champ rejeté est retiré par deux masques tirés de son bit de test ; avec
+exactement deux (7,4 %), deux retraits successifs. Les candidats sont dépliés en
+lanes de 32 bits et ajoutés aux huit lanes de s1 en un add, 6144 est retiré par
+lane, puis Barrett SWAR (M = 1365, s = 24, reste < 2q), −q conditionnel,
+repli en |centré|, masque des emplacements inutilisés, et la somme des huit
+carrés est le coefficient central de x · renverse(x). La 17ᵉ lane de chaque bloc
+passe par le même corps à quatre candidats. Aucun Barrett exact ne tient dans
+une lane de 32 bits sur la plage x < 2¹⁷ (recherche exhaustive), d'où le −q.
+Référence : l'ancien sampler, gardé dans `test/falcon1024.t.sol`, en fuzz
+différentiel (s1 arbitraire < 3q, nul, saturé ; messages de 0 à 299 octets) ;
+`pythonref/model_sampler1024.py` rejoue les chemins groupés en 256 bits, lanes
+non comptées aléatoires.
+
+### Essayé, non retenu
+- A0 déroulé dans A et A0' dans A' (une boucle de 8 itérations sur les deux
+  blocs, comme la passe A de Falcon-512) : 41 171 → 50 771 et 33 006 → 40 884,
+  le corps de boucle géant dégrade le placement de pile via-IR.
+- Noyau intra-mot coupé en deux boucles (aller + produit, puis inverse) :
+  198 406 → 208 035.
+- Masques `and(shr(240, …), 0xffff)` retirés des lectures de twiddles : 0 gas,
+  l'optimiseur les éliminait déjà (gardé pour la lisibilité).
+
 ## [unreleased] — 2026-09-16 — vérifieur Falcon-1024 (`ZKNOX_falcon1024`)
 
 ### Measured

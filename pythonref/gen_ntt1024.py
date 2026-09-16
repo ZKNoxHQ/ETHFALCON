@@ -1,194 +1,42 @@
 #!/usr/bin/env python3
-# gen_ntt1024.py -- emits src/ZKNOX_NTT_falcon1024.sol: the Falcon-1024 forward
-# and inverse NTT (q = 12289, n = 1024) and the fused product s1 = INTT(NTT(s2) o h)
-# on EIGHT 32-bit lanes per word, Montgomery R = 2^16, same machinery as gen_ntt8.py
-# (Falcon-512).
+# gen_ntt1024.py -- emits src/ZKNOX_NTT_falcon1024.sol: the Falcon-1024 forward and inverse
+# NTT (q = 12289, n = 1024) and the fused product s1 = INTT(NTT(s2) o h) on EIGHT 32-bit
+# lanes per word, Montgomery R = 2^16, same machinery as gen_ntt8.py (Falcon-512).
 #
 #   python3 pythonref/gen_ntt1024.py > src/ZKNOX_NTT_falcon1024.sol && forge fmt src/ZKNOX_NTT_falcon1024.sol
-#   python3 pythonref/gen_ntt1024.py --schedule      (prints the bound analysis)
+#   python3 pythonref/sched1024.py            (the schedules and their bounds)
 #
-# Convention: psi_rev[i] = 7^brv10(i) mod q (7 has order 2048), psi_inv_rev[i] =
-# its inverse, loops of eprint 2016/504 Alg. 1/2 (ZKNOX_NTT.sol), INTT scaled by
-# 1024^-1. Same tables as @noble/post-quantum falcon (ROOT_OF_UNITY 7, brvBits 10)
-# and, restricted to the first 512 entries, as the Falcon-512 tables of this repo.
+# Convention: psi_rev[i] = 7^brv10(i) mod q, loops of eprint 2016/504 (ZKNOX_NTT.sol), INTT
+# scaled by 1024^-1; the tables of @noble/post-quantum falcon and, on 512 entries, of the
+# Falcon-512 code of this repo.
 #
-# Layout: 128 words, coefficient 8w + j in lane j (bits 32j..32j+31) of word w.
-# Compact form: 64 words of sixteen 16-bit fields, coefficient 16c + i in field i.
+# Layout: 128 words, coefficient 8w + j in lane j (bits 32j..32j+31) of word w. Compact form:
+# 64 words of sixteen 16-bit fields, coefficient 16c + i in field i.
 #
-# Forward (Cooley-Tukey), layers t = 512 .. 1:
-#   A0  t = 512          words (w, w + 64), spread from the compact input
-#   A   t = 256, 128, 64 radix-8 on word octets (i + 8k), two blocks of 64 words
-#   B   t = 32, 16, 8    radix-8 on eight consecutive words
-#   W   t = 4, 2, 1      SWAR inside each word (per-lane twiddles), Barrett first,
-#                        canonical output gathered straight into the compact result
-# Inverse (Gentleman-Sande), layers t = 1 .. 512:
-#   W'  t = 1, 2, 4      SWAR inside each word, spread from the compact input
-#   B'  t = 8, 16, 32
-#   A'  t = 64, 128, 256
-#   A0' t = 512 with 1024^-1 folded, canonical output gathered into the compact result
-# Biases, reductions and lane locality are derived and asserted by schedule() below;
-# pythonref/model_ntt1024.py replays the schedule lane by lane.
+# Passes: A0 t = 512 (words w, w + 64) | A t = 256, 128, 64 (word octets i + 8k, twiddles as
+# constants) | B t = 32, 16, 8 (eight consecutive words) | W t = 4, 2, 1 inside the word
+# (SWAR); the inverse runs them backwards, t = 512 folded with 1024^-1. Every bias, Barrett
+# and REDC comes from the exact per-coefficient analysis of pythonref/sched1024.py.
 import sys
 
-q = 12289
-N = 1024
-R = 1 << 16
-QINV = (-pow(q, -1, R)) % R
-assert QINV == 12287
-NINV = pow(N, -1, q)
-LANE = 1 << 32
+import sched1024 as S
+
+q, N, R = S.q, S.N, S.R
+FWM, INVM = S.FWM, S.INVM
+
+B_NTT, LOG_NTT, _ = S.analyze(S.spec_ntt(S.NTT_BARS))
+B_INTT, LOG_INTT, _ = S.analyze(S.spec_intt(S.INTT_PRE, S.INTT_RED))
+B_PROD, LOG_PROD, _ = S.analyze(S.spec_product(S.PROD_FWBARS, S.PROD_PRE, S.PROD_RED))
+# the aligned forward passes are shared: same biases in both chains
+assert B_NTT[:7] == B_PROD[:7]
+FWK = B_NTT  # 512 .. 1
+INVK = B_INTT[:9]  # 1 .. 256
+INV512 = B_INTT[9]
+PFWK = B_PROD[7:10]  # 4, 2, 1
+PINVK = B_PROD[10:19]
+PINV512 = B_PROD[19]
 
 
-def brv(x, bits=10):
-    return int(format(x, f"0{bits}b")[::-1], 2)
-
-
-assert pow(7, 1024, q) == q - 1
-FW = [pow(7, brv(i), q) for i in range(N)]
-INV = [pow(x, -1, q) for x in FW]
-FWM = [(x * R) % q for x in FW]
-INVM = [(x * R) % q for x in INV]
-CN = (NINV * R) % q  # REDC(s * CN) = s / 1024
-DN = (INV[1] * NINV * R) % q  # REDC(d * DN) = d * inv[1] / 1024
-ZMAX = q - 1
-
-
-# ---------------------------------------------------------------- bound analysis
-def redc_max(x):
-    """largest REDC output for a lane product x <= X; asserts lane locality"""
-    assert x + (R - 1) * q < LANE, "REDC not lane-local"
-    return (x + (R - 1) * q) >> 16
-
-
-def barrett_max(M):
-    """largest x - floor(21x / 2^18) q over 0 <= x <= M (exhaustive), quotient < 32"""
-    assert (M * 21) >> 18 < 32
-    return max(x - ((x * 21) >> 18) * q for x in range(M + 1))
-
-
-def ceil_q(x):
-    return -(-x // q)
-
-
-def schedule():
-    """lane bounds (inclusive maxima) through both transforms; returns biases (in q)"""
-    S = {"fw": [], "inv": []}
-    M = q - 1  # canonical input, enforced by the public functions
-    log = [("fw in", M)]
-    for layer in ("512", "256", "128", "64", "32", "16", "8", "BAR", "4", "2", "1"):
-        if layer == "BAR":
-            M = barrett_max(M)
-            log.append(("fw Barrett before t=4", M))
-            continue
-        t = redc_max(M * ZMAX)
-        k = ceil_q(t)
-        S["fw"].append(k)
-        M = M + k * q  # sum <= M + t <= M + kq, difference <= M + kq
-        log.append((f"fw t={layer} bias {k}q", M))
-    M = barrett_max(M)
-    log.append(("fw Barrett final", M))
-    assert M < 2 * q
-    log.append(("fw cond -q", q - 1))
-
-    M = q - 1
-    log.append(("inv in", M))
-    # sums reduced by a conditional -4q when the next layer would otherwise not fit
-    for layer in ("1", "2", "4", "8", "16", "32", "64", "128", "256"):
-        k = ceil_q(M + 1) if M >= q else 1  # bias >= every hi lane
-        d = M + k * q
-        t = redc_max(d * ZMAX)
-        s = 2 * M
-        red = s >= 4 * q
-        if red:
-            assert s < 8 * q and s < (1 << 17) + 4 * q
-            s = 4 * q - 1
-        M = max(s, t)
-        S["inv"].append((k, red))
-        log.append((f"inv t={layer} bias {k}q{' sums -4q' if red else ''}", M))
-    # t = 512 folded: sums and differences both multiplied by a constant < q
-    k = ceil_q(M + 1)
-    S["inv512"] = k
-    s_out = redc_max(2 * M * ZMAX)
-    d_out = redc_max((M + k * q) * ZMAX)
-    M = max(s_out, d_out)
-    log.append((f"inv t=512 bias {k}q, x 1/1024", M))
-    M = barrett_max(M)
-    log.append(("inv Barrett final", M))
-    assert M < 2 * q
-    log.append(("inv cond -q", q - 1))
-    S["log"] = log
-    return S
-
-
-SCHED = schedule()
-
-
-def schedule_product():
-    """lane bounds of the fused chain s1 = INTT(NTT(s2) o h): forward layers as in
-    schedule() down to t = 8, then in the word: Barrett, t = 4, 2, Barrett, t = 1,
-    pointwise by the raw 16-bit key fields (one REDC, a factor R^-1 stays on the
-    values), inverse t = 1, 2, Barrett, t = 4; B' and A' as schedule(); t = 512
-    folded with 1024^-1 and the missing R, output lanes < 3q (stored complemented)"""
-    P = {}
-    log = []
-    M = 270357
-    assert M == dict(SCHED["log"])["fw t=8 bias 5q"]
-    log.append(("prod after B (as fw)", M))
-    M = barrett_max(M)
-    log.append(("prod Barrett before t=4", M))
-    ks = []
-    for layer in ("4", "2"):
-        t = redc_max(M * ZMAX)
-        k = ceil_q(t)
-        ks.append(k)
-        M += k * q
-        log.append((f"prod fw t={layer} bias {k}q", M))
-    M = barrett_max(M)
-    log.append(("prod Barrett before t=1", M))
-    t = redc_max(M * ZMAX)
-    k = ceil_q(t)
-    ks.append(k)
-    M += k * q
-    log.append((f"prod fw t=1 bias {k}q", M))
-    P["fw"] = ks
-    M = redc_max(M * 0xFFFF)  # key fields are not range-checked
-    log.append(("prod pointwise (16-bit key)", M))
-    inv = []
-    for layer in ("1", "2", "BAR", "4"):
-        if layer == "BAR":
-            M = barrett_max(M)
-            log.append(("prod Barrett before inv t=4", M))
-            continue
-        k = ceil_q(M + 1)
-        t = redc_max((M + k * q) * ZMAX)
-        assert 2 * M < LANE
-        M = max(2 * M, t)
-        inv.append(k)
-        log.append((f"prod inv t={layer} bias {k}q", M))
-    P["inv"] = inv
-    assert M < 4 * q  # entry condition of B' / A' (bias 4q, sums -4q)
-    for (k, red), layer in zip(SCHED["inv"][3:], ("8", "16", "32", "64", "128", "256")):
-        assert red and k == 4
-        t = redc_max((M + k * q) * ZMAX)
-        assert 2 * M < 8 * q
-        M = max(4 * q - 1, t)
-        log.append((f"prod inv t={layer} bias 4q sums -4q", M))
-    k = ceil_q(M + 1)
-    P["inv512"] = k
-    M = max(redc_max(2 * M * ZMAX), redc_max((M + k * q) * ZMAX))
-    assert M < 3 * q
-    log.append((f"prod inv t=512 bias {k}q, x R/1024", M))
-    P["log"] = log
-    return P
-
-
-PSCHED = schedule_product()
-CNR = (NINV * R * R) % q  # REDC(REDC-pointwise value * CNR) = s / 1024
-DNR = (INV[1] * NINV * R * R) % q
-CPL = 3 * q + 6144
-
-
-# ---------------------------------------------------------------- emitters
 def rep8(v):
     return sum(v << (32 * i) for i in range(8))
 
@@ -206,7 +54,7 @@ CONSTS = {}
 
 def C(name, value):
     if name in CONSTS:
-        assert CONSTS[name] == value
+        assert CONSTS[name] == value, name
     CONSTS[name] = value
     return name
 
@@ -227,29 +75,24 @@ def CONDQ(v):
     return f"{v} := sub({v}, mul(shr(17, and(add({v}, _F10_CQ17), _F10_G17)), 12289))"
 
 
-def COND4(expr):
-    return f"sub({expr}, mul(shr(17, and(add({expr}, _F10_C4Q17), _F10_G17)), 49156))"
-
-
 C("_F10_M16", rep8(0xFFFF))
 C("_F10_Q5", rep8(0x1F))
 C("_F10_G17", rep8(1 << 17))
 C("_F10_CQ17", rep8((1 << 17) - q))
-C("_F10_C4Q17", rep8((1 << 17) - 4 * q))
 C("_F10_LO128", (1 << 128) - 1)
 C("_F10_M0145", lanes(0xFFFFFFFF, (0, 1, 4, 5)))
 C("_F10_M0246", lanes(0xFFFFFFFF, (0, 2, 4, 6)))
 C("_F10_M01", (1 << 64) - 1)
 C("_F10_M45", ((1 << 64) - 1) << 128)
-for _j in (0, 2, 4, 6):
+for _j in range(8):
     C(f"_F10_LN{_j}", 0xFFFFFFFF << (32 * _j))
-# spread / gather between 8 x 16-bit fields and 8 x 32-bit lanes (128-bit halves)
 C("_F10_L64", (1 << 64) - 1)
 C("_F10_SA", 0xFFFFFFFF | (0xFFFFFFFF << 128))
 C("_F10_SB", (0xFFFFFFFF << 32) | (0xFFFFFFFF << 160))
 C("_F10_SC", sum(0xFFFF << (64 * i) for i in range(4)))
 C("_F10_SD", sum(0xFFFF0000 << (64 * i) for i in range(4)))
 C("_F10_H64", ((1 << 64) - 1) << 64)
+C("_F10_CPL", rep8(S.CPL))
 
 
 def spread(x):
@@ -277,7 +120,7 @@ def indent(lines, n):
 
 def tw_at(ptr, off=0):
     src = ptr if off == 0 else f"add({ptr}, {off})"
-    return f"and(shr(240, mload({src})), 0xffff)"
+    return f"shr(240, mload({src}))"
 
 
 def ct_octet(ld, st, tw, K):
@@ -336,11 +179,14 @@ def ct_octet(ld, st, tw, K):
 
 
 def gs_octet(ld, st, tw, K, red):
-    """Gentleman-Sande radix-8 body; K = biases (in q), red = sums reduced by -4q per layer"""
+    """Gentleman-Sande radix-8 body; K = biases (in q), red[l] = sums of layer l take a Barrett"""
     b1, b2, b3 = BQ8(K[0]), BQ8(K[1]), BQ8(K[2])
 
-    def S(expr, layer):
-        return COND4(expr) if red[layer] else expr
+    def sums(var, expr, layer):
+        out = [f"    {var} := {expr}"]
+        if red[layer]:
+            out.append("    " + BAR(var))
+        return out
 
     L = ["let b0, b1, b2, b3", "{"]
     L += [
@@ -348,19 +194,19 @@ def gs_octet(ld, st, tw, K, red):
         f"    let v := {ld(1)}",
         f"    let t := mul(sub(add(u, {b1}), v), {tw['S3'][0]})",
         "    " + RED("t"),
-        f"    u := {S('add(u, v)', 0)}",
+        *sums("u", "add(u, v)", 0),
         f"    v := {ld(2)}",
         f"    let w := {ld(3)}",
         f"    let s := mul(sub(add(v, {b1}), w), {tw['S3'][1]})",
         "    " + RED("s"),
-        f"    v := {S('add(v, w)', 0)}",
+        *sums("v", "add(v, w)", 0),
         f"    w := mul(sub(add(u, {b2}), v), {tw['S2a']})",
         "    " + RED("w"),
-        f"    b0 := {S('add(u, v)', 1)}",
+        *sums("b0", "add(u, v)", 1),
         "    b2 := w",
         f"    w := mul(sub(add(t, {b2}), s), {tw['S2a']})",
         "    " + RED("w"),
-        f"    b1 := {S('add(t, s)', 1)}",
+        *sums("b1", "add(t, s)", 1),
         "    b3 := w",
         "}",
         "{",
@@ -368,25 +214,26 @@ def gs_octet(ld, st, tw, K, red):
         f"    let v := {ld(5)}",
         f"    let t := mul(sub(add(u, {b1}), v), {tw['S3'][2]})",
         "    " + RED("t"),
-        f"    u := {S('add(u, v)', 0)}",
+        *sums("u", "add(u, v)", 0),
         f"    v := {ld(6)}",
         f"    let w := {ld(7)}",
         f"    let s := mul(sub(add(v, {b1}), w), {tw['S3'][3]})",
         "    " + RED("s"),
-        f"    v := {S('add(v, w)', 0)}",
+        *sums("v", "add(v, w)", 0),
         f"    w := mul(sub(add(u, {b2}), v), {tw['S2b']})",
         "    " + RED("w"),
-        f"    u := {S('add(u, v)', 1)}",
+        *sums("u", "add(u, v)", 1),
         f"    v := mul(sub(add(t, {b2}), s), {tw['S2b']})",
         "    " + RED("v"),
-        f"    t := {S('add(t, s)', 1)}",
+        *sums("t", "add(t, s)", 1),
     ]
     for lo, hi, k in (("b0", "u", 0), ("b1", "t", 1), ("b2", "w", 2), ("b3", "v", 3)):
         L += [
             f"    s := mul(sub(add({lo}, {b3}), {hi}), {tw['S1']})",
             "    " + RED("s"),
             f"    {st(k + 4, 's')}",
-            f"    {st(k, S(f'add({lo}, {hi})', 2))}",
+            *sums(lo, f"add({lo}, {hi})", 2),
+            f"    {st(k, lo)}",
         ]
     L.append("}")
     return L
@@ -400,123 +247,12 @@ def stp(k, e, stride):
     return f"mstore(p, {e})" if k == 0 else f"mstore(add(p, {hex(k * stride)}), {e})"
 
 
-FWK = SCHED["fw"]  # 10 biases: 512, 256, 128, 64, 32, 16, 8, 4, 2, 1
-INVK = SCHED["inv"]  # 9 (bias, reduce): 1, 2, 4, 8, 16, 32, 64, 128, 256
-
-
-def fw_A0(check=True):
-    k = FWK[0]
-    L = [
-        "let x := and(shr(ks, mload(src)), _F10_LO128)",
-        *spread("x"),
-        *(["bad := or(bad, and(add(x, _F10_CQ17), _F10_G17))"] if check else []),
-        "let y := and(shr(ks, mload(add(src, 0x400))), _F10_LO128)",
-        *spread("y"),
-        *(["bad := or(bad, and(add(y, _F10_CQ17), _F10_G17))"] if check else []),
-        f"y := mul(y, {hex(FWM[1])})",
-        RED("y"),
-        "mstore(p, add(x, y))",
-        f"mstore(add(p, 0x800), sub(add(x, {BQ8(k)}), y))",
-    ]
-    return L
-
-
-def fw_inword():
-    kb4, kb2, kb1 = FWK[7], FWK[8], FWK[9]
-    L = ["let W := mload(p)", BAR("W")]
-    L += [
-        "let V := mul(shr(128, W), and(shr(240, mload(t1)), 0xffff))",
-        RED("V"),
-        "let lo := and(W, _F10_LO128)",
-        f"W := or(add(lo, V), shl(128, sub(add(lo, {C(f'_F10_LOx{kb4}', lanes(kb4 * q, range(4)))}), V)))",
-    ]
-    L += [
-        "V := shr(224, mload(t2))",
-        "lo := and(shr(64, W), _F10_M0145)",
-        "V := or(and(mul(lo, shr(16, V)), _F10_M01), and(mul(lo, and(V, 0xffff)), _F10_M45))",
-        RED("V"),
-        "lo := and(W, _F10_M0145)",
-        f"W := or(add(lo, V), shl(64, sub(add(lo, {C(f'_F10_0145x{kb2}', lanes(kb2 * q, (0, 1, 4, 5)))}), V)))",
-    ]
-    L += [
-        "V := shr(192, mload(t3))",
-        "lo := and(shr(32, W), _F10_M0246)",
-        "V := or(or(and(mul(lo, shr(48, V)), _F10_LN0), and(mul(lo, and(shr(32, V), 0xffff)), _F10_LN2)), or(and(mul(lo, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(lo, and(V, 0xffff)), _F10_LN6)))",
-        RED("V"),
-        "lo := and(W, _F10_M0246)",
-        f"W := or(add(lo, V), shl(32, sub(add(lo, {C(f'_F10_0246x{kb1}', lanes(kb1 * q, (0, 2, 4, 6)))}), V)))",
-    ]
-    L += [BAR("W"), CONDQ("W"), *gather("W"), "mstore(op, or(mload(op), shl(ks, W)))"]
-    return L
-
-
-def inv_inword():
-    (k1, r1), (k2, r2), (k4, r4) = INVK[0], INVK[1], INVK[2]
-    L = [
-        "let W := and(shr(ks, mload(src)), _F10_LO128)",
-        *spread("W"),
-        "bad := or(bad, and(add(W, _F10_CQ17), _F10_G17))",
-    ]
-
-    def sum_(e, r):
-        return COND4(e) if r else e
-
-    L += [
-        "let V := shr(192, mload(t3))",
-        "let lo := and(W, _F10_M0246)",
-        "W := and(shr(32, W), _F10_M0246)",
-        f"let d := sub(add(lo, {C(f'_F10_0246x{k1}', lanes(k1 * q, (0, 2, 4, 6)))}), W)",
-        f"lo := {sum_('add(lo, W)', r1)}",
-        "W := or(or(and(mul(d, shr(48, V)), _F10_LN0), and(mul(d, and(shr(32, V), 0xffff)), _F10_LN2)), or(and(mul(d, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(d, and(V, 0xffff)), _F10_LN6)))",
-        RED("W"),
-        "W := or(lo, shl(32, W))",
-    ]
-    L += [
-        "V := shr(224, mload(t2))",
-        "lo := and(W, _F10_M0145)",
-        "W := and(shr(64, W), _F10_M0145)",
-        f"d := sub(add(lo, {C(f'_F10_0145x{k2}', lanes(k2 * q, (0, 1, 4, 5)))}), W)",
-        f"lo := {sum_('add(lo, W)', r2)}",
-        "W := or(and(mul(d, shr(16, V)), _F10_M01), and(mul(d, and(V, 0xffff)), _F10_M45))",
-        RED("W"),
-        "W := or(lo, shl(64, W))",
-    ]
-    L += [
-        "V := and(shr(240, mload(t1)), 0xffff)",
-        "lo := and(W, _F10_LO128)",
-        "W := shr(128, W)",
-        f"d := mul(sub(add(lo, {C(f'_F10_LOx{k4}', lanes(k4 * q, range(4)))}), W), V)",
-        RED("d"),
-        f"mstore(p, or({sum_('add(lo, W)', r4)}, shl(128, d)))",
-    ]
-    return L
-
-
-def inv_A0():
-    k = SCHED["inv512"]
-    return [
-        "let x := mload(p)",
-        "let y := mload(add(p, 0x800))",
-        f"let s := mul(add(x, y), {hex(CN)})",
-        RED("s"),
-        BAR("s"),
-        CONDQ("s"),
-        *gather("s"),
-        "mstore(op, or(mload(op), shl(ks, s)))",
-        f"s := mul(sub(add(x, {BQ8(k)}), y), {hex(DN)})",
-        RED("s"),
-        BAR("s"),
-        CONDQ("s"),
-        *gather("s"),
-        "mstore(add(op, 0x400), or(mload(add(op, 0x400)), shl(ks, s)))",
-    ]
-
-
+# ---------------------------------------------------------------- in-word pieces
 def fw_t4(k):
     return [
-        "let V := mul(shr(128, W), and(shr(240, mload(t1)), 0xffff))",
+        "V := mul(shr(128, W), shr(240, mload(t1)))",
         RED("V"),
-        "let lo := and(W, _F10_LO128)",
+        "lo := and(W, _F10_LO128)",
         f"W := or(add(lo, V), shl(128, sub(add(lo, {C(f'_F10_LOx{k}', lanes(k * q, range(4)))}), V)))",
     ]
 
@@ -543,55 +279,96 @@ def fw_t1(k):
     ]
 
 
-def prod_inword():
-    k4, k2, k1 = PSCHED["fw"]
-    i1, i2, i4 = PSCHED["inv"]
-    L = ["let W := mload(p)", BAR("W"), *fw_t4(k4), *fw_t2(k2), BAR("W"), *fw_t1(k1)]
-    L += ["V := shr(ks, mload(kp))"]
-    terms = [f"and(mul(W, {'and(V, 0xffff)' if j == 0 else f'and(shr({16 * j}, V), 0xffff)'}), _F10_LN{j})" for j in range(8)]
-    for j in range(8):
-        C(f"_F10_LN{j}", 0xFFFFFFFF << (32 * j))
-    L += [f"W := or(or(or({terms[0]}, {terms[1]}), or({terms[2]}, {terms[3]})), or(or({terms[4]}, {terms[5]}), or({terms[6]}, {terms[7]})))", RED("W")]
-    L += [
-        "V := shr(192, mload(add(t3, 2048)))",
+def fw_kernel(bars, ks):
+    L = []
+    for t, k, piece in zip((4, 2, 1), ks, (fw_t4, fw_t2, fw_t1)):
+        if t in bars:
+            L.append(BAR("W"))
+        L += piece(k)
+    return L
+
+
+def inv_t1(k, red, tb_off):
+    L = [
+        f"V := shr(192, mload({'t3' if tb_off == 0 else f'add(t3, {tb_off})'}))",
         "lo := and(W, _F10_M0246)",
         "W := and(shr(32, W), _F10_M0246)",
-        f"let d := sub(add(lo, {C(f'_F10_0246x{i1}', lanes(i1 * q, (0, 2, 4, 6)))}), W)",
+        f"d := sub(add(lo, {C(f'_F10_0246x{k}', lanes(k * q, (0, 2, 4, 6)))}), W)",
         "lo := add(lo, W)",
+    ]
+    if red:
+        L.append(BAR("lo"))
+    L += [
         "W := or(or(and(mul(d, shr(48, V)), _F10_LN0), and(mul(d, and(shr(32, V), 0xffff)), _F10_LN2)), or(and(mul(d, and(shr(16, V), 0xffff)), _F10_LN4), and(mul(d, and(V, 0xffff)), _F10_LN6)))",
         RED("W"),
         "W := or(lo, shl(32, W))",
-        "V := shr(224, mload(add(t2, 2048)))",
-        "lo := and(W, _F10_M0145)",
-        "W := and(shr(64, W), _F10_M0145)",
-        f"d := sub(add(lo, {C(f'_F10_0145x{i2}', lanes(i2 * q, (0, 1, 4, 5)))}), W)",
-        "lo := add(lo, W)",
-        "W := or(and(mul(d, shr(16, V)), _F10_M01), and(mul(d, and(V, 0xffff)), _F10_M45))",
-        RED("W"),
-        "W := or(lo, shl(64, W))",
-        BAR("W"),
-        "V := and(shr(240, mload(add(t1, 2048))), 0xffff)",
-        "lo := and(W, _F10_LO128)",
-        "W := shr(128, W)",
-        f"d := mul(sub(add(lo, {C(f'_F10_LOx{i4}', lanes(i4 * q, range(4)))}), W), V)",
-        RED("d"),
-        "mstore(p, or(add(lo, W), shl(128, d)))",
     ]
     return L
 
 
-def prod_A0():
-    k = PSCHED["inv512"]
-    C("_F10_CPL", rep8(CPL))
+def inv_t2(k, red, tb_off):
+    L = [
+        f"V := shr(224, mload({'t2' if tb_off == 0 else f'add(t2, {tb_off})'}))",
+        "lo := and(W, _F10_M0145)",
+        "W := and(shr(64, W), _F10_M0145)",
+        f"d := sub(add(lo, {C(f'_F10_0145x{k}', lanes(k * q, (0, 1, 4, 5)))}), W)",
+        "lo := add(lo, W)",
+    ]
+    if red:
+        L.append(BAR("lo"))
+    L += [
+        "W := or(and(mul(d, shr(16, V)), _F10_M01), and(mul(d, and(V, 0xffff)), _F10_M45))",
+        RED("W"),
+        "W := or(lo, shl(64, W))",
+    ]
+    return L
+
+
+def inv_t4(k, red, tb_off):
+    L = [
+        f"V := shr(240, mload({'t1' if tb_off == 0 else f'add(t1, {tb_off})'}))",
+        "lo := and(W, _F10_LO128)",
+        "W := shr(128, W)",
+        f"d := mul(sub(add(lo, {C(f'_F10_LOx{k}', lanes(k * q, range(4)))}), W), V)",
+        "lo := add(lo, W)",
+    ]
+    if red:
+        L.append(BAR("lo"))
+    L += [RED("d"), "W := or(lo, shl(128, d))"]
+    return L
+
+
+def inv_kernel(pre, red, ks, tb_off):
+    L = []
+    for t, k, piece in zip((1, 2, 4), ks, (inv_t1, inv_t2, inv_t4)):
+        if t in pre:
+            L.append(BAR("W"))
+        L += piece(k, t in red, tb_off)
+    return L
+
+
+def pointwise():
+    terms = [f"and(mul(W, {'and(V, 0xffff)' if j == 0 else f'and(shr({16 * j}, V), 0xffff)'}), _F10_LN{j})" for j in range(8)]
     return [
-        "let x := mload(p)",
-        "let y := mload(add(p, 0x800))",
-        f"let s := mul(add(x, y), {hex(CNR)})",
-        RED("s"),
-        "mstore(p, sub(_F10_CPL, s))",
-        f"s := mul(sub(add(x, {BQ8(k)}), y), {hex(DNR)})",
-        RED("s"),
-        "mstore(add(p, 0x800), sub(_F10_CPL, s))",
+        "V := shr(ks, mload(kp))",
+        f"W := or(or(or({terms[0]}, {terms[1]}), or({terms[2]}, {terms[3]})), or(or({terms[4]}, {terms[5]}), or({terms[6]}, {terms[7]})))",
+        RED("W"),
+    ]
+
+
+def fw_A0(check):
+    k = FWK[0]
+    return [
+        "let x := and(shr(ks, mload(src)), _F10_LO128)",
+        *spread("x"),
+        *(["bad := or(bad, and(add(x, _F10_CQ17), _F10_G17))"] if check else []),
+        "let y := and(shr(ks, mload(add(src, 0x400))), _F10_LO128)",
+        *spread("y"),
+        *(["bad := or(bad, and(add(y, _F10_CQ17), _F10_G17))"] if check else []),
+        f"y := mul(y, {hex(FWM[1])})",
+        RED("y"),
+        "mstore(p, add(x, y))",
+        f"mstore(add(p, 0x800), sub(add(x, {BQ8(k)}), y))",
     ]
 
 
@@ -599,90 +376,97 @@ def table_hex(t):
     return "".join(format(x, "04x") for x in t)
 
 
-def tw_const(tbl, i):
-    return hex(tbl[i])
-
-
-def emit():
-    fwA = [
-        {"S1": tw_const(FWM, 2 + b), "S2a": tw_const(FWM, 4 + 2 * b), "S2b": tw_const(FWM, 5 + 2 * b), "S3": [tw_const(FWM, 8 + 4 * b + k) for k in range(4)]}
-        for b in (0, 1)
-    ]
-    invA = [
-        {"S1": tw_const(INVM, 2 + b), "S2a": tw_const(INVM, 4 + 2 * b), "S2b": tw_const(INVM, 5 + 2 * b), "S3": [tw_const(INVM, 8 + 4 * b + k) for k in range(4)]}
-        for b in (0, 1)
-    ]
-    twB = {"S1": tw_at("t1"), "S2a": tw_at("t2"), "S2b": tw_at("t2", 2), "S3": [tw_at("t3", 2 * k) for k in range(4)]}
-    ld8 = lambda k: ldp(k, 0x100)
-    st8 = lambda k, e: stp(k, e, 0x100)
-    ld1 = lambda k: ldp(k, 0x20)
-    st1 = lambda k, e: stp(k, e, 0x20)
-    invAK = [k for k, _ in INVK[6:9]]
-    invAR = [r for _, r in INVK[6:9]]
-    invBK = [k for k, _ in INVK[3:6]]
-    invBR = [r for _, r in INVK[3:6]]
-
-    passA = []
+def aligned_A(tbl, ks_or_none, ct, red=None):
+    out = []
     for b in (0, 1):
-        passA += [
+        tw = {"S1": hex(tbl[2 + b]), "S2a": hex(tbl[4 + 2 * b]), "S2b": hex(tbl[5 + 2 * b]), "S3": [hex(tbl[8 + 4 * b + k]) for k in range(4)]}
+        body = ct_octet(lambda k: ldp(k, 0x100), lambda k, e: stp(k, e, 0x100), tw, ks_or_none) if ct else gs_octet(lambda k: ldp(k, 0x100), lambda k, e: stp(k, e, 0x100), tw, ks_or_none, red)
+        out += [
             f"// block {b}: words {64 * b}..{64 * b + 63}",
             "{",
             f"    let p := add(A, {hex(32 + 32 * 64 * b)})",
             "    for { let e := add(p, 0x100) } lt(p, e) { p := add(p, 32) } {",
-            indent(ct_octet(ld8, st8, fwA[b], FWK[1:4]), 8),
+            indent(body, 8),
             "    }",
             "}",
         ]
-    passAinv = []
-    for b in (0, 1):
-        passAinv += [
-            f"// block {b}: words {64 * b}..{64 * b + 63}",
-            "{",
-            f"    let p := add(A, {hex(32 + 32 * 64 * b)})",
-            "    for { let e := add(p, 0x100) } lt(p, e) { p := add(p, 32) } {",
-            indent(gs_octet(ld8, st8, invA[b], invAK, invAR), 8),
-            "    }",
-            "}",
-        ]
+    return out
 
-    body = f"""
-/// @dev forward t = 512: spread the compact input (64 words) to 128 lane words; flags fields >= q
-function _f10FwA0(uint256[] memory c, uint256[] memory A) pure returns (uint256 bad) {{
-    assembly ("memory-safe") {{
-        let src := add(c, 32)
-        let p := add(A, 32)
-        let ks := 0
-        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(fw_A0(), 12)}
-            src := add(src, shr(2, ks))
-            ks := xor(ks, 128)
-        }}
-    }}
-}}
 
-/// @dev forward t = 256, 128, 64: radix-8 on word octets (i + 8k), twiddles as constants
-function _f10FwA(uint256[] memory A) pure {{
-    assembly ("memory-safe") {{
-{indent(passA, 8)}
-    }}
-}}
+TWB = {"S1": tw_at("t1"), "S2a": tw_at("t2"), "S2b": tw_at("t2", 2), "S3": [tw_at("t3", 2 * k) for k in range(4)]}
 
-/// @dev forward t = 32, 16, 8: radix-8 on eight consecutive words, twiddles from the table
-function _f10FwB(uint256[] memory A, uint256 tb) pure {{
+
+def passB(name, doc, body):
+    return f"""
+/// @dev {doc}
+function {name}(uint256[] memory A, uint256 tb) pure {{
     assembly ("memory-safe") {{
         let p := add(A, 32)
         let t1 := add(tb, 32)
         let t2 := add(tb, 64)
         let t3 := add(tb, 128)
         for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 0x100) }} {{
-{indent(ct_octet(ld1, st1, twB, FWK[4:7]), 12)}
+{indent(body, 12)}
             t1 := add(t1, 2)
             t2 := add(t2, 4)
             t3 := add(t3, 8)
         }}
     }}
 }}
+"""
 
+
+def passA(name, doc, body):
+    return f"""
+/// @dev {doc}
+function {name}(uint256[] memory A) pure {{
+    assembly ("memory-safe") {{
+{indent(body, 8)}
+    }}
+}}
+"""
+
+
+def red_flags(red, layers):
+    return [t in red for t in layers]
+
+
+def emit():
+    ld1 = lambda k: ldp(k, 0x20)
+    st1 = lambda k, e: stp(k, e, 0x20)
+    body = ""
+    body += f"""
+/// @dev forward t = 512: spread the compact input (64 words) to 128 lane words; `check` flags fields >= q
+function _f10FwA0(uint256[] memory c, uint256[] memory A) pure returns (uint256 bad) {{
+    assembly ("memory-safe") {{
+        let src := add(c, 32)
+        let p := add(A, 32)
+        let ks := 0
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(fw_A0(True), 12)}
+            src := add(src, shr(2, ks))
+            ks := xor(ks, 128)
+        }}
+    }}
+}}
+
+/// @dev forward t = 512 for the product: s2 is canonical (checked by the caller), no flag
+function _f10ProdA0(uint256[] memory c, uint256[] memory A) pure {{
+    assembly ("memory-safe") {{
+        let src := add(c, 32)
+        let p := add(A, 32)
+        let ks := 0
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(fw_A0(False), 12)}
+            src := add(src, shr(2, ks))
+            ks := xor(ks, 128)
+        }}
+    }}
+}}
+"""
+    body += passA("_f10FwA", "forward t = 256, 128, 64: radix-8 on word octets (i + 8k), twiddles as constants", aligned_A(FWM, FWK[1:4], True))
+    body += passB("_f10FwB", "forward t = 32, 16, 8: radix-8 on eight consecutive words, twiddles from the table", ct_octet(ld1, st1, TWB, FWK[4:7]))
+    body += f"""
 /// @dev forward t = 4, 2, 1 inside each word (SWAR), canonical output gathered into the compact result
 function _f10FwW(uint256[] memory A, uint256[] memory out, uint256 tb) pure {{
     assembly ("memory-safe") {{
@@ -694,7 +478,7 @@ function _f10FwW(uint256[] memory A, uint256[] memory out, uint256 tb) pure {{
         let t2 := add(tb, 512)
         let t3 := add(tb, 1024)
         for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(fw_inword(), 12)}
+{indent(["let W := mload(p)", "let V", "let lo", *fw_kernel(S.NTT_BARS, FWK[7:10]), BAR("W"), CONDQ("W"), *gather("W"), "mstore(op, or(mload(op), shl(ks, W)))"], 12)}
             t1 := add(t1, 2)
             t2 := add(t2, 4)
             t3 := add(t3, 8)
@@ -714,7 +498,7 @@ function _f10InvW(uint256[] memory c, uint256[] memory A, uint256 tb) pure retur
         let t2 := add(tb, 512)
         let t3 := add(tb, 1024)
         for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(inv_inword(), 12)}
+{indent(["let W := and(shr(ks, mload(src)), _F10_LO128)", *spread("W"), "bad := or(bad, and(add(W, _F10_CQ17), _F10_G17))", "let V", "let lo", "let d", *inv_kernel(S.INTT_PRE, S.INTT_RED, INVK[0:3], 0), "mstore(p, W)"], 12)}
             t1 := add(t1, 2)
             t2 := add(t2, 4)
             t3 := add(t3, 8)
@@ -723,30 +507,10 @@ function _f10InvW(uint256[] memory c, uint256[] memory A, uint256 tb) pure retur
         }}
     }}
 }}
-
-/// @dev inverse t = 8, 16, 32
-function _f10InvB(uint256[] memory A, uint256 tb) pure {{
-    assembly ("memory-safe") {{
-        let p := add(A, 32)
-        let t1 := add(tb, 32)
-        let t2 := add(tb, 64)
-        let t3 := add(tb, 128)
-        for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 0x100) }} {{
-{indent(gs_octet(ld1, st1, twB, invBK, invBR), 12)}
-            t1 := add(t1, 2)
-            t2 := add(t2, 4)
-            t3 := add(t3, 8)
-        }}
-    }}
-}}
-
-/// @dev inverse t = 64, 128, 256
-function _f10InvA(uint256[] memory A) pure {{
-    assembly ("memory-safe") {{
-{indent(passAinv, 8)}
-    }}
-}}
-
+"""
+    body += passB("_f10InvB", "inverse t = 8, 16, 32 (standalone INTT)", gs_octet(ld1, st1, TWB, INVK[3:6], red_flags(S.INTT_RED, (8, 16, 32))))
+    body += passA("_f10InvA", "inverse t = 64, 128, 256 (standalone INTT)", aligned_A(INVM, INVK[6:9], False, red_flags(S.INTT_RED, (64, 128, 256))))
+    body += f"""
 /// @dev inverse t = 512 with 1024^-1 folded, canonical output gathered into the compact result
 function _f10InvA0(uint256[] memory A, uint256[] memory out) pure {{
     assembly ("memory-safe") {{
@@ -754,9 +518,45 @@ function _f10InvA0(uint256[] memory A, uint256[] memory out) pure {{
         let op := add(out, 32)
         let ks := 0
         for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(inv_A0(), 12)}
+{indent(["let x := mload(p)", "let y := mload(add(p, 0x800))", f"let s := mul(add(x, y), {hex(S.CN)})", RED("s"), BAR("s"), CONDQ("s"), *gather("s"), "mstore(op, or(mload(op), shl(ks, s)))", f"s := mul(sub(add(x, {BQ8(INV512)}), y), {hex(S.DN)})", RED("s"), BAR("s"), CONDQ("s"), *gather("s"), "mstore(add(op, 0x400), or(mload(add(op, 0x400)), shl(ks, s)))"], 12)}
             op := add(op, shr(2, ks))
             ks := xor(ks, 128)
+        }}
+    }}
+}}
+
+/// @dev product kernel inside each word: forward t = 4, 2, 1, pointwise by the compact key
+///      (one REDC, R^-1 left on the values), inverse t = 1, 2, 4
+function _f10ProdW(uint256[] memory A, uint256[] memory h, uint256 tb) pure {{
+    assembly ("memory-safe") {{
+        let p := add(A, 32)
+        // forward entries as in _f10FwW, the inverse ones 2,048 bytes further
+        let t1 := add(tb, 256)
+        let t2 := add(tb, 512)
+        let t3 := add(tb, 1024)
+        let kp := add(h, 32)
+        let ks := 0
+        for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(["let W := mload(p)", "let V", "let lo", "let d", *fw_kernel(S.PROD_FWBARS, PFWK), *pointwise(), *inv_kernel(S.PROD_PRE, S.PROD_RED, PINVK[0:3], 2048), "mstore(p, W)"], 12)}
+            t1 := add(t1, 2)
+            t2 := add(t2, 4)
+            t3 := add(t3, 8)
+            kp := add(kp, shr(2, ks))
+            ks := xor(ks, 128)
+        }}
+    }}
+}}
+"""
+    body += passB("_f10ProdInvB", "inverse t = 8, 16, 32 of the product", gs_octet(ld1, st1, TWB, PINVK[3:6], red_flags(S.PROD_RED, (8, 16, 32))))
+    body += passA("_f10ProdInvA", "inverse t = 64, 128, 256 of the product", aligned_A(INVM, PINVK[6:9], False, red_flags(S.PROD_RED, (64, 128, 256))))
+    body += f"""
+/// @dev last inverse layer of the product: t = 512 with 1024^-1 and R folded, lanes stored
+///      as 3q + 6144 - s1_i
+function _f10ProdA0Inv(uint256[] memory A) pure {{
+    assembly ("memory-safe") {{
+        let p := add(A, 32)
+        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
+{indent(["let x := mload(p)", "let y := mload(add(p, 0x800))", f"let s := mul(add(x, y), {hex(S.CNR)})", RED("s"), "mstore(p, sub(_F10_CPL, s))", f"s := mul(sub(add(x, {BQ8(PINV512)}), y), {hex(S.DNR)})", RED("s"), "mstore(add(p, 0x800), sub(_F10_CPL, s))"], 12)}
         }}
     }}
 }}
@@ -794,60 +594,12 @@ function falconINTT1024(uint256[] memory a) pure returns (uint256[] memory out) 
     out = new uint256[](64);
     _f10InvA0(A, out);
 }}
-"""
-    body += f"""
-/// @dev forward t = 512 for the product: spread s2 (canonical, checked by the caller), no flag
-function _f10ProdA0(uint256[] memory c, uint256[] memory A) pure {{
-    assembly ("memory-safe") {{
-        let src := add(c, 32)
-        let p := add(A, 32)
-        let ks := 0
-        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(fw_A0(check=False), 12)}
-            src := add(src, shr(2, ks))
-            ks := xor(ks, 128)
-        }}
-    }}
-}}
-
-/// @dev product kernel inside each word: forward t = 4, 2, 1, pointwise by the compact key
-///      (one REDC, R^-1 left on the values), inverse t = 1, 2, 4; output lanes < 4q
-function _f10ProdW(uint256[] memory A, uint256[] memory h, uint256 tb) pure {{
-    assembly ("memory-safe") {{
-        let p := add(A, 32)
-        // forward entries as in _f10FwW, the inverse ones 2,048 bytes further
-        let t1 := add(tb, 256)
-        let t2 := add(tb, 512)
-        let t3 := add(tb, 1024)
-        let kp := add(h, 32)
-        let ks := 0
-        for {{ let e := add(p, 0x1000) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(prod_inword(), 12)}
-            t1 := add(t1, 2)
-            t2 := add(t2, 4)
-            t3 := add(t3, 8)
-            kp := add(kp, shr(2, ks))
-            ks := xor(ks, 128)
-        }}
-    }}
-}}
-
-/// @dev last inverse layer of the product: t = 512 with 1024^-1 and R folded, lanes stored
-///      as 3q + 6144 - s1_i with s1_i < 3q
-function _f10ProdA0Inv(uint256[] memory A) pure {{
-    assembly ("memory-safe") {{
-        let p := add(A, 32)
-        for {{ let e := add(p, 0x800) }} lt(p, e) {{ p := add(p, 32) }} {{
-{indent(prod_A0(), 12)}
-        }}
-    }}
-}}
 
 /// @notice s1 = INTT(NTT(s2) o h) for Falcon-1024: s2 compact and canonical (64 words of
 ///         16-bit fields), h the compact NTT-domain key (16-bit fields, not range-checked).
 ///         Result PACKED on eight 32-bit lanes per word (coefficient 8w + j in lane j of
-///         word w), each lane holding 3q + 6144 - x with x < 3q congruent to s1_i, the
-///         term the norm sampler of ZKNOX_falcon1024_core.sol adds to a hash candidate.
+///         word w), each lane holding 3q + 6144 - x with x <= {LOG_PROD[-1][1]} congruent to s1_i,
+///         the term the norm sampler of ZKNOX_falcon1024_core.sol adds to a hash candidate.
 function falconProduct1024(uint256[] memory s2, uint256[] memory h) pure returns (uint256[] memory A) {{
     require(s2.length == 64 && h.length == 64, "compact length");
     bytes memory tw = _F10_TW;
@@ -860,12 +612,16 @@ function falconProduct1024(uint256[] memory s2, uint256[] memory h) pure returns
     _f10FwA(A);
     _f10FwB(A, tb);
     _f10ProdW(A, h, tb);
-    _f10InvB(A, tb + 2048);
-    _f10InvA(A);
+    _f10ProdInvB(A, tb + 2048);
+    _f10ProdInvA(A);
     _f10ProdA0Inv(A);
 }}
 """
-    sched = "\n".join(f"//   {name:<28} lanes <= {m} ({m / q:.3f} q)" for name, m in SCHED["log"] + PSCHED["log"])
+
+    def fmt(title, log):
+        return [f"//   {title}"] + [f"//     {label:<34} lanes <= {m} ({m / q:.3f} q)" for label, m in log]
+
+    sched = "\n".join(fmt("falconNTT1024", LOG_NTT) + fmt("falconINTT1024", LOG_INTT) + fmt("falconProduct1024", LOG_PROD))
     consts = "\n".join(f"uint256 constant {k} = {hx(v)};" for k, v in CONSTS.items())
     return f"""// SPDX-License-Identifier: MIT
 // Copyright (C) 2026 - ZKNOX
@@ -874,20 +630,20 @@ function falconProduct1024(uint256[] memory s2, uint256[] memory h) pure returns
 // FILE: ZKNOX_NTT_falcon1024.sol
 // GENERATED by pythonref/gen_ntt1024.py -- do not edit by hand.
 //
-// Forward and inverse NTT for Falcon-1024 (q = 12289, n = 1024) on EIGHT 32-bit
-// lanes per word, Montgomery R = 2^16 (-q^-1 mod R = 12287), same machinery as
-// ZKNOX_NTT_falcon8.sol (Falcon-512).
+// Forward and inverse NTT for Falcon-1024 (q = 12289, n = 1024) and the fused product
+// s1 = INTT(NTT(s2) o h), on EIGHT 32-bit lanes per word, Montgomery R = 2^16
+// (-q^-1 mod R = 12287), same machinery as ZKNOX_NTT_falcon8.sol (Falcon-512).
 // Tables: psi_rev[i] = 7^brv10(i) mod q, the convention of ZKNOX_NTT.sol and of
 // @noble/post-quantum (falcon, ROOT_OF_UNITY = 7, brvBits = 10).
 // Layout: 128 words, coefficient 8w + j in lane j (bits 32j..32j+31) of word w.
 //   forward  A0 t = 512 | A t = 256, 128, 64 (word octets i + 8k) | B t = 32, 16, 8
 //            (eight consecutive words) | W t = 4, 2, 1 inside the word (SWAR)
-//   inverse  W' t = 1, 2, 4 | B' t = 8, 16, 32 | A' t = 64, 128, 256 | A0' t = 512
-//            with 1024^-1 folded (sums * {hex(CN)}, differences * {hex(DN)})
-// Lane bounds, asserted by the generator:
+//   inverse  W' t = 1, 2, 4 | B' t = 8, 16, 32 | A' t = 64, 128, 256 | A0' t = 512 folded
+//            (INTT: 1024^-1 = sums * {hex(S.CN)}, differences * {hex(S.DN)}; product: the
+//            pointwise R as well, {hex(S.CNR)} and {hex(S.DNR)})
+// Biases, Barretts (M = 21) and REDC locality come from the exact per-coefficient bound
+// analysis of pythonref/sched1024.py (actual twiddle of every butterfly); maxima:
 {sched}
-// The product falconProduct1024 reuses A0 (no range flag), A, B, B', A' and replaces the
-// in-word kernels and the last layer (sums * {hex(CNR)}, differences * {hex(DNR)}).
 // Twiddle table: forward then inverse, 1,024 big-endian uint16 each, entries in
 // Montgomery form (x R mod q), read by unaligned mload at running pointers.
 pragma solidity ^0.8.25;
@@ -899,11 +655,4 @@ bytes constant _F10_TW = hex"{table_hex(FWM)}{table_hex(INVM)}";
 
 
 if __name__ == "__main__":
-    if "--schedule" in sys.argv:
-        for name, m in SCHED["log"]:
-            print(f"{name:<30} {m:>7}  {m / q:.3f} q")
-        for name, m in PSCHED["log"]:
-            print(f"{name:<30} {m:>7}  {m / q:.3f} q")
-        print("fw biases", FWK, "inv", INVK, "inv512", SCHED["inv512"], "product", PSCHED["fw"], PSCHED["inv"], PSCHED["inv512"])
-    else:
-        sys.stdout.write(emit())
+    sys.stdout.write(emit())

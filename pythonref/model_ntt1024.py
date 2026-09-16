@@ -1,48 +1,35 @@
 #!/usr/bin/env python3
-# model_ntt1024.py -- lane-by-lane replay of the schedules emitted by gen_ntt1024.py
-# (Falcon-1024 NTT, inverse NTT, fused product), checked against a scalar reference
-# and against the vectors of @noble/post-quantum in test/ntt1024_vectors.json
-# (jsref/gen_ntt1024_vectors.mjs).
+# model_ntt1024.py -- replays, lane by lane on concrete values, the three schedules of
+# pythonref/sched1024.py that gen_ntt1024.py emits (falconNTT1024, falconINTT1024,
+# falconProduct1024), and checks
+#   - every lane against the per-coefficient bound of the analysis after every step,
+#   - every REDC for lane locality, every Barrett for its input range,
+#   - the results against a scalar reference and against the @noble/post-quantum vectors of
+#     test/ntt1024_vectors.json (jsref/gen_ntt1024_vectors.mjs).
 #
 #   python3 pythonref/model_ntt1024.py
-#
-# Every REDC asserts lane locality (x + m q < 2^32) and every lane is checked
-# against the maxima printed by `gen_ntt1024.py --schedule`.
 import json
 import os
 import random
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gen_ntt1024 as G  # noqa: E402
+import sched1024 as S  # noqa: E402
 
-q, N, R = G.q, G.N, G.R
-FWK, INVK, INV512 = G.FWK, G.INVK, G.SCHED["inv512"]
-LOG = dict(G.SCHED["log"])
+q, N, R = S.q, S.N, S.R
 
 
 def redc(x):
     assert 0 <= x < 1 << 32
-    m = ((x & 0xFFFF) * G.QINV) & 0xFFFF
+    m = ((x & 0xFFFF) * S.QINV) & 0xFFFF
     s = x + m * q
     assert s < 1 << 32, "REDC not lane-local"
     return s >> 16
 
 
 def barrett(x):
-    qh = (x * 21) >> 18
-    assert qh < 32 and x * 21 < 1 << 32
-    return x - qh * q
-
-
-def condq(x):
-    assert x < 2 * q
-    return x - q if x >= q else x
-
-
-def cond4(x):
-    assert x < 8 * q
-    return x - 4 * q if x >= 4 * q else x
+    assert 0 <= x < S.BLIM
+    return x - ((x * 21) >> 18) * q
 
 
 def ref_fw(a):
@@ -50,9 +37,9 @@ def ref_fw(a):
     while m < N:
         t >>= 1
         for i in range(m):
-            S = G.FW[m + i]
+            z = S.FW[m + i]
             for j in range(2 * i * t, 2 * i * t + t):
-                U, V = a[j], a[j + t] * S % q
+                U, V = a[j], a[j + t] * z % q
                 a[j], a[j + t] = (U + V) % q, (U - V) % q
         m <<= 1
     return a
@@ -63,138 +50,60 @@ def ref_inv(a):
     while m > 1:
         h = m >> 1
         for i in range(h):
-            S = G.INV[h + i]
+            z = S.INV[h + i]
             for j in range(2 * i * t, 2 * i * t + t):
                 U, V = a[j], a[j + t]
-                a[j], a[j + t] = (U + V) % q, (U - V) * S % q
+                a[j], a[j + t] = (U + V) % q, (U - V) * z % q
         t <<= 1
         m >>= 1
-    return [x * G.NINV % q for x in a]
+    return [x * S.NINV % q for x in a]
 
 
-def fw_model(a, track):
-    """the lane operations of falconNTT1024, one layer at a time"""
+def run(steps, biases, a, key=None):
+    """concrete replay of a schedule; `biases` in step order as returned by the analysis"""
     a = a[:]
-    t, m, layer = N, 1, 0
-    while m < N:
-        t >>= 1
-        if t == 4:
+    bi = iter(biases)
+    bounds = [q - 1] * N
+    for st in steps:
+        kind = st[0]
+        if kind == "ct":
+            t, k = st[1], next(bi)
+            m = N // (2 * t)
+            for i in range(m):
+                z = S.FWM[m + i]
+                for j in range(2 * i * t, 2 * i * t + t):
+                    r = redc(a[j + t] * z)
+                    assert r <= k * q
+                    a[j], a[j + t] = a[j] + r, a[j] + k * q - r
+        elif kind == "gs":
+            t, red, k = st[1], st[2], next(bi)
+            h = N // (2 * t)
+            for i in range(h):
+                z = S.INVM[h + i]
+                for j in range(2 * i * t, 2 * i * t + t):
+                    U, V = a[j], a[j + t]
+                    assert V < k * q
+                    s = U + V
+                    a[j], a[j + t] = barrett(s) if red else s, redc((U + k * q - V) * z)
+        elif kind == "bar":
             a = [barrett(x) for x in a]
-            track("fw Barrett before t=4", a)
-        k = FWK[layer]
-        for i in range(m):
-            S = G.FWM[m + i]
-            for j in range(2 * i * t, 2 * i * t + t):
-                r = redc(a[j + t] * S)
-                assert r <= k * q
-                a[j], a[j + t] = a[j] + r, a[j] + k * q - r
-        track(f"fw t={t} bias {k}q", a)
-        m <<= 1
-        layer += 1
-    a = [barrett(x) for x in a]
-    track("fw Barrett final", a)
-    return [condq(x) for x in a]
-
-
-def inv_model(a, track):
-    a = a[:]
-    t, m, layer = 1, N, 0
-    while m > 2:
-        h = m >> 1
-        k, red = INVK[layer]
-        for i in range(h):
-            S = G.INVM[h + i]
-            for j in range(2 * i * t, 2 * i * t + t):
-                U, V = a[j], a[j + t]
-                assert U + k * q - V > 0
-                s = U + V
-                a[j], a[j + t] = cond4(s) if red else s, redc((U + k * q - V) * S)
-        track(f"inv t={t} bias {k}q{' sums -4q' if red else ''}", a)
-        t <<= 1
-        m >>= 1
-        layer += 1
-    out = a[:]
-    for j in range(N // 2):
-        U, V = a[j], a[j + N // 2]
-        out[j] = redc((U + V) * G.CN)
-        out[j + N // 2] = redc((U + INV512 * q - V) * G.DN)
-    track(f"inv t=512 bias {INV512}q, x 1/1024", out)
-    out = [barrett(x) for x in out]
-    track("inv Barrett final", out)
-    return [condq(x) for x in out]
-
-
-PSCHED = G.PSCHED
-PLOG = dict(PSCHED["log"])
-
-
-def prod_model(s2, h16, track):
-    """the lane operations of falconProduct1024; returns the stored lanes 3q + 6144 - s1_i"""
-    a = s2[:]
-    t, m = N, 1
-    for layer in range(7):  # t = 512 .. 8, as the standalone forward
-        t >>= 1
-        k = FWK[layer]
-        for i in range(m):
-            S = G.FWM[m + i]
-            for j in range(2 * i * t, 2 * i * t + t):
-                r = redc(a[j + t] * S)
-                assert r <= k * q
-                a[j], a[j + t] = a[j] + r, a[j] + k * q - r
-        m <<= 1
-    track("prod after B (as fw)", a)
-    a = [barrett(x) for x in a]
-    track("prod Barrett before t=4", a)
-    for step, k in zip((4, 2, 1), PSCHED["fw"]):
-        if step == 1:
-            a = [barrett(x) for x in a]
-            track("prod Barrett before t=1", a)
-        t >>= 1
-        for i in range(m):
-            S = G.FWM[m + i]
-            for j in range(2 * i * t, 2 * i * t + t):
-                r = redc(a[j + t] * S)
-                assert r <= k * q
-                a[j], a[j + t] = a[j] + r, a[j] + k * q - r
-        track(f"prod fw t={step} bias {k}q", a)
-        m <<= 1
-    a = [redc(x * y) for x, y in zip(a, h16)]
-    track("prod pointwise (16-bit key)", a)
-    t, m = 1, N
-    steps = [(k, False) for k in PSCHED["inv"]] + list(INVK[3:])
-    for n_layer, (k, red) in enumerate(steps):
-        if n_layer == 2:
-            a = [barrett(x) for x in a]
-            track("prod Barrett before inv t=4", a)
-        h = m >> 1
-        for i in range(h):
-            S = G.INVM[h + i]
-            for j in range(2 * i * t, 2 * i * t + t):
-                U, V = a[j], a[j + t]
-                assert U + k * q - V > 0
-                s = U + V
-                a[j], a[j + t] = cond4(s) if red else s, redc((U + k * q - V) * S)
-        track(f"prod inv t={t} bias {k}q{' sums -4q' if red else ''}", a)
-        t <<= 1
-        m >>= 1
-    out = a[:]
-    k = PSCHED["inv512"]
-    for j in range(N // 2):
-        U, V = a[j], a[j + N // 2]
-        out[j] = redc((U + V) * G.CNR)
-        out[j + N // 2] = redc((U + k * q - V) * G.DNR)
-    track(f"prod inv t=512 bias {k}q, x R/1024", out)
-    return [G.CPL - x for x in out]
-
-
-def tracker(seen):
-    def f(name, a):
-        mx = max(a)
-        bound = LOG[name] if name in LOG else PLOG[name]
-        assert mx <= bound, f"{name}: lane {mx} above the generator bound {bound}"
-        seen[name] = max(seen.get(name, 0), mx)
-
-    return f
+        elif kind == "condq":
+            assert max(a) < 2 * q
+            a = [x - q if x >= q else x for x in a]
+        elif kind == "pw16":
+            a = [redc(x * y) for x, y in zip(a, key)]
+        elif kind == "fold":
+            cs, cd, k = st[1], st[2], next(bi)
+            H = N // 2
+            out = a[:]
+            for j in range(H):
+                assert a[j + H] < k * q
+                out[j] = redc((a[j] + a[j + H]) * cs)
+                out[j + H] = redc((a[j] + k * q - a[j + H]) * cd)
+            a = out
+        S.apply(st, bounds)
+        assert all(x <= b for x, b in zip(a, bounds)), f"{kind}: lane above its bound"
+    return a
 
 
 def unpack(words):
@@ -202,32 +111,35 @@ def unpack(words):
 
 
 def main():
-    seen = {}
-    tr = tracker(seen)
+    ntt_steps = S.spec_ntt(S.NTT_BARS)
+    intt_steps = S.spec_intt(S.INTT_PRE, S.INTT_RED)
+    prod_steps = S.spec_product(S.PROD_FWBARS, S.PROD_PRE, S.PROD_RED)
+    b_ntt, _, _ = S.analyze(ntt_steps)
+    b_intt, _, _ = S.analyze(intt_steps)
+    b_prod, _, _ = S.analyze(prod_steps)
+
     here = os.path.dirname(os.path.abspath(__file__))
     vec = json.load(open(os.path.join(here, "..", "test", "ntt1024_vectors.json")))
     for v in vec["vectors"]:
         a = unpack(v["a"])
-        assert fw_model(a, tr) == ref_fw(a) == unpack(v["ntt"]), v["name"]
-        assert inv_model(a, tr) == ref_inv(a) == unpack(v["intt"]), v["name"]
-    print(f"{len(vec['vectors'])} vectors of {vec['source']}: model == scalar reference == noble")
+        assert run(ntt_steps, b_ntt, a) == ref_fw(a) == unpack(v["ntt"]), v["name"]
+        assert run(intt_steps, b_intt, a) == ref_inv(a) == unpack(v["intt"]), v["name"]
+    print(f"{len(vec['vectors'])} vectors of {vec['source']}: NTT and INTT replays == scalar reference == noble")
+
     rng = random.Random(1024)
-    for _ in range(20):
+    for _ in range(8):
         a = [rng.randrange(q) for _ in range(N)]
-        assert fw_model(a, tr) == ref_fw(a)
-        assert inv_model(a, tr) == ref_inv(a)
-        assert inv_model(fw_model(a, tr), tr) == a
-    print("20 random polynomials: model == scalar reference, round trip")
-    cases = [([rng.randrange(q) for _ in range(N)], [rng.randrange(1 << 16) for _ in range(N)]) for _ in range(12)]
-    cases += [([q - 1] * N, [0xFFFF] * N), ([q - 1] * N, [q - 1] * N)]
-    for s2, h16 in cases:
-        lanes = prod_model(s2, h16, tr)
-        ref = ref_inv([x * (y % q) % q for x, y in zip(ref_fw(s2), h16)])
-        assert all(6144 <= c and G.CPL - c < 3 * q and (G.CPL - c) % q == r for c, r in zip(lanes, ref))
-    print(f"{len(cases)} products (random, saturated, 16-bit keys): model == INTT(NTT(s2) o h), lanes < 3q")
-    for name, m in G.SCHED["log"] + PSCHED["log"]:
-        if name in seen:
-            print(f"{name:<30} bound {m:>7}  reached {seen[name]:>7}")
+        assert run(ntt_steps, b_ntt, a) == ref_fw(a)
+        assert run(intt_steps, b_intt, a) == ref_inv(a)
+    print("8 random polynomials: NTT and INTT replays == scalar reference")
+
+    cases = [([rng.randrange(q) for _ in range(N)], [rng.randrange(1 << 16) for _ in range(N)]) for _ in range(8)]
+    cases += [([q - 1] * N, [0xFFFF] * N), ([q - 1] * N, [q - 1] * N), ([0] * N, [0xFFFF] * N)]
+    for s2, key in cases:
+        lanes = run(prod_steps, b_prod, s2, key)
+        ref = ref_inv([x * (y % q) % q for x, y in zip(ref_fw(s2), key)])
+        assert all(x <= S.CPL and x % q == r for x, r in zip(lanes, ref))
+    print(f"{len(cases)} products (random, saturated, 16-bit keys): replay == INTT(NTT(s2) o h), stored lanes CPL - x >= 0")
 
 
 if __name__ == "__main__":

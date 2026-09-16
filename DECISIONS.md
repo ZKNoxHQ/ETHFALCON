@@ -323,3 +323,34 @@ le produit fusionné, le hash-to-point à 1 024 sorties, la norme et le contrat.
   fournirait ntth dans une autre convention (autre racine, autre ordre) serait
   rejeté, ce qui reste à vérifier pour le signeur Ledger en Falcon-1024.
 
+## ADR-009 — Falcon-1024 : bornes par coefficient et réductions placées par recherche ; sampler à huit candidats
+
+**Contexte**
+Après ADR-008, le vérifieur coûte 1 254 638 gas, dont ~710 k de permutations
+fixes. Le produit reprenait l'analyse uniforme de Falcon-512, qui ajoutait une
+couche de croissance et imposait deux Barrett intra-mot et un −4q sur les sommes
+de toutes les couches alignées inverses. Le sampler traitait quatre candidats par
+lane.
+
+**Décision**
+1. Les biais et réductions sont dérivés d'une analyse par coefficient avec les
+   twiddles réels (`pythonref/sched1024.py`), source unique du générateur et du
+   modèle. Les emplacements des réductions sont choisis par une recherche
+   exhaustive avec élagage, pondérée en opérations-mots, et figés dans le module.
+2. Les sommes réduites des passes alignées utilisent un Barrett (M = 21) en
+   instruction séparée plutôt qu'un −4q conditionnel en expression dupliquée.
+3. Le sampler groupe huit candidats et tolère zéro, un ou deux rejets en SWAR ;
+   au-delà, candidat par candidat.
+4. Pas de fusion de passes ni de découpe du noyau : mesurées plus chères.
+
+**Conséquences**
+- 1 185 270 gas sur le KAT 0 ; hors permutations −12,7 %. Les permutations sont
+  désormais ~60 % du coût : le prochain gain est dans le helper (ADR-006), pas
+  dans le vérifieur.
+- Le produit dépend de bornes plus serrées : toute modification des tables ou
+  des passes doit repasser par `sched1024.py` (le générateur échoue si une borne
+  casse, le modèle le vérifie sur valeurs concrètes).
+- Le sampler suppose des lanes de s1 dans [3q + 6144 − (3q − 1), 3q + 6144] et
+  des candidats < 2¹⁶ ; le produit garantit s1 ≤ 19 540.
+- Le planning exact s'appliquerait aussi à Falcon-512 ; non fait.
+
