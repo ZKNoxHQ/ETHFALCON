@@ -1,5 +1,44 @@
 # VERSION.md — changelog
 
+## [unreleased] — 2026-09-16 — Falcon-1024, étape 1 : NTT et NTT inverse (`ZKNOX_NTT_falcon1024.sol`)
+
+### Measured
+| | gas |
+|---|---:|
+| `falconNTT1024`, entrée compacte canonique | **182 550** |
+| `falconINTT1024`, entrée compacte canonique | **207 756** |
+| boucles scalaires de `ZKNOX_NTT.sol` à n = 1024 (tables par modexp, indicatif) | 6 345 294 |
+
+Profil par défaut (solc 0.8.30, via-IR, runs 1e6). 6/6 tests dans
+`test/ntt1024.t.sol` : 11 vecteurs de `@noble/post-quantum` 0.7.1 (NTT, INTT,
+INTT∘NTT), référence scalaire à tables indépendantes, produit dans l'anneau
+contre le produit naïf mod X¹⁰²⁴ + 1, aller-retour en fuzz (257 runs), rejet des
+champs ≥ q.
+
+### Ajouts
+- `pythonref/gen_ntt1024.py` : générateur. Tables ψ_rev[i] = 7^brv10(i) mod q
+  (7 d'ordre 2048), les 512 premières entrées égales aux tables Falcon-512 du
+  dépôt. Le planning (biais, Barrett, réductions −4q) est dérivé par une analyse
+  de bornes exacte et assertée (localité REDC, pas de retenue entre lanes), puis
+  imprimé en tête du fichier Solidity (`--schedule` pour l'afficher seul).
+- `src/ZKNOX_NTT_falcon1024.sol` (généré) : 128 mots de huit lanes de 32 bits,
+  Montgomery R = 2¹⁶, table de 4 096 octets (aller puis inverse, forme Montgomery).
+  Aller : A0 t = 512 (dépliage depuis le compact), A t = 256/128/64 (octets de
+  mots, twiddles en constantes), B t = 32/16/8, W t = 4/2/1 en SWAR avec un
+  Barrett en tête, sortie canonique regroupée directement dans le compact.
+  Inverse : W' t = 1/2/4, B', A', A0' t = 512 avec 1024⁻¹ replié.
+- `pythonref/model_ntt1024.py` : rejoue le planning lane par lane, vérifie les
+  bornes du générateur, compare à la référence scalaire et aux vecteurs noble.
+- `jsref/` : `gen_ntt1024_vectors.mjs` reconstruit l'anneau entier de
+  `falcon.js` (`genCrystals` avec les options de `getIntPoly(10)`, vérifiées sur
+  la source installée), contrôle produit et aller-retour, écrit
+  `test/ntt1024_vectors.{json,sol}`.
+
+### Non fait
+- Chaîne fusionnée s1 = INTT(NTT(s2) ∘ h) et vérifieur Falcon-1024 (étape 2).
+- Aucune optimisation des biais ni des réductions −4q de l'inverse, repris tels
+  quels de Falcon-512.
+
 ## [unreleased] — 2026-09-09 — notre permutation Keccak-f[1600] (`test/f1600_zknox.hex`)
 
 ### Measured

@@ -26,3 +26,6 @@ falcon/nistfalcon/build/*.o
 # KAT files NIST
 falcon/nistfalcon/*.req
 falcon/nistfalcon/*.rsp
+
+# Python bytecode
+__pycache__/

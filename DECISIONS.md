@@ -262,3 +262,34 @@ pour qu'ETHDILITHIUM l'utilise tel quel.
 **Attribution**
 Fireblocks pour la forme Q et la glue SHAKE (MIT) ; générateur, motif de
 complément, ordonnancement et vérificateur à nous.
+
+## ADR-007 — Falcon-1024 : convention NTT, découpage des couches, entrée canonique
+
+**Contexte**
+Le vérifieur Falcon-1024 réutilise la machinerie huit lanes de Falcon-512
+(ADR-005). Il faut fixer la convention de la NTT (elle définit la clé publique
+en domaine NTT que recevra le vérifieur), le découpage des dix couches sur des
+mots de huit coefficients, et le traitement des champs d'entrée ≥ q.
+
+**Décision**
+1. ψ_rev[i] = 7^brv10(i) mod q, boucles de eprint 2016/504 comme
+   `ZKNOX_NTT.sol`, inverse normalisée par 1024⁻¹. C'est la convention de
+   `@noble/post-quantum` (falcon, racine 7, brvBits 10) et, restreinte à 512
+   entrées, celle déjà en place pour Falcon-512 : ntth Falcon-1024 et Falcon-512
+   partagent la même tour de racines.
+2. Couches 1 + 3 + 3 + 3 : t = 512 seule (paires de mots à distance 64), puis
+   les passes radix-8 A et B de Falcon-512 et le noyau SWAR intra-mot.
+3. Les fonctions publiques exigent des champs < q et le vérifient pendant le
+   dépliage (un OR par demi-mot). Avec des champs de 16 bits, l'aller dépasse
+   la localité REDC à t = 8 (analyse du générateur). Accepter 16 bits
+   demanderait un Barrett sur l'entrée, non mesuré.
+4. Référence externe : `@noble/post-quantum` épinglé à 0.7.1, vecteurs générés
+   et commités, pas d'appel à node pendant `forge test`.
+
+**Conséquences**
+- Un Barrett de plus que Falcon-512 dans l'aller (22q en sortie de B, avant
+  t = 4) ; l'inverse garde lanes < 4q avec −4q conditionnel sur les sommes à
+  partir de t = 4.
+- Les vecteurs noble ne passent pas par le signeur : la convention de ntth
+  côté signeur Falcon-1024 (python, Ledger) reste à confronter à l'étape 2.
+

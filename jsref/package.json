@@ -1,0 +1,13 @@
+{
+  "name": "ethfalcon-jsref",
+  "private": true,
+  "type": "module",
+  "description": "Reference vectors from @noble/post-quantum (Falcon) for the Solidity transforms",
+  "scripts": {
+    "ntt1024": "node gen_ntt1024_vectors.mjs"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "0.7.1",
+    "@noble/hashes": "2.4.0"
+  }
+}
