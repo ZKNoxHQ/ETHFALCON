@@ -207,6 +207,9 @@ Before Native Account Abstraction is pushed, FALCON can be integrated in a 7702 
 
 One of Kohaku goals is to integrate these contracts in a 4337 account.
 
+## SECURITY
+This repository has not been audited. We ran internal audits, and we also thank external developers for their review of the code (@007bsd for finding a vulnerability in the salt computation in some od the signers).
+
 ## CONCLUSION
 
 This repo provides a highly optimized version of FALCON. Order of magnitudes were gained compared to other implementations. In our search, we also devise a way to implement falcon with recovery without requiring the inverse NTT transformation (only forward).
