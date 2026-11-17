@@ -32,4 +32,9 @@ func main() {
 	} else {
 		fmt.Println("❌ Signature is invalid.")
 	}
+
+	// Inputs for the geth falconvrfy precompile (see geth/README.md).
+	fmt.Printf("SIG=0x%x\n", sig)
+	fmt.Printf("MSG=0x%x\n", msg)
+	fmt.Printf("PUB=0x%x\n", pk)
 }
