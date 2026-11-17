@@ -1,4 +1,5 @@
 import unittest
+from hashlib import blake2s
 from blake2s_prng import Blake2sPRNG
 
 
@@ -73,3 +74,16 @@ class testBlake2sPRNG(unittest.TestCase):
         prng2.update(b"Danette")
         prng2.flip()
         self.assertEqual(prng1.read(2) + prng1.read(2), prng2.read(4))
+
+    def test_long_input_matches_hashlib(self):
+        """No input cap (audit L-6): a long input matches one-shot hashlib.blake2s."""
+        data = bytes((5 * i + 1) % 256 for i in range(5000))
+        prng = Blake2sPRNG()
+        prng.inject(data[:1234])
+        prng.inject(data[1234:])
+        prng.flip()
+        output = prng.read(70)
+        state = blake2s(data, digest_size=32).digest()
+        expected = b"".join(blake2s(state + i.to_bytes(8, "big"), digest_size=32).digest()
+                            for i in range(3))[:70]
+        self.assertEqual(output, expected)
