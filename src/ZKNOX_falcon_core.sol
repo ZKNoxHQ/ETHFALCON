@@ -9,32 +9,77 @@ pragma solidity ^0.8.25;
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_NTT_falcon.sol";
 
-/// @notice Validates that all coefficients in a polynomial are within the field modulus q
-/// @dev Checks each coefficient < q=12289, early exit on first violation for gas efficiency
-/// @param polynomial Input polynomial (compacted or expanded format depending on is_compact flag)
-/// @param is_compact If true, polynomial is in compacted format (32 words); if false, expanded (512 coefficients)
-/// @return true if all coefficients are valid (< q), false otherwise
-function falcon_checkPolynomialRange(uint256[] memory polynomial, bool is_compact) pure returns (bool) {
-    uint256[] memory a;
-    if (is_compact == false) {
-        a = _ZKNOX_NTT_Expand(polynomial);
-    } else {
-        a = polynomial;
-    }
+/// @dev Length in bytes of an encoded public key as accepted by `setKey`:
+///      abi.encode(uint256[] ntth) with ntth.length == 32, i.e. offset (0x20) || length (32) || 32 words.
+uint256 constant FALCON_PK_ENCODED_LEN = 1088;
 
-    uint256 len = a.length;
-    bool result = true;
+/// @dev Code size of an SSTORE2 key pointer written by `setKey`: a leading STOP byte (0x00) || encoded key.
+uint256 constant FALCON_PK_CODE_SIZE = 1089;
+
+/// @notice Checks that every 16-bit coefficient of a compacted polynomial is < q
+/// @dev SWAR check over the 32 compact words. Each word is split into its even and odd 16-bit lanes,
+///      placed in 32-bit slots, and 0xCFFF (= 2^16 - q) is added to every slot: a lane x is >= q
+///      iff x + 2^16 - q carries into bit 16 of its slot. The maximum slot value is
+///      0xffff + 0xcfff < 2^17, so no carry crosses slots.
+/// @param a Compacted polynomial (must have exactly 32 words, otherwise false is returned)
+/// @return result true iff a.length == 32 and all 512 coefficients are in [0, q)
+function falcon_checkCompactRange(uint256[] memory a) pure returns (bool result) {
+    if (a.length != 32) return false;
     assembly ("memory-safe") {
+        let lanes := 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff
+        let bias := 0x0000cfff0000cfff0000cfff0000cfff0000cfff0000cfff0000cfff0000cfff
+        let carry := 0x0001000000010000000100000001000000010000000100000001000000010000
+        let bad := 0
         let ptr := add(a, 32)
-        let endPtr := add(ptr, shl(5, len)) // len * 32
+        let endPtr := add(ptr, 1024)
         for {} lt(ptr, endPtr) { ptr := add(ptr, 32) } {
-            if gt(mload(ptr), q) {
-                result := 0
-                ptr := endPtr // break
-            }
+            let w := mload(ptr)
+            bad := or(bad, or(add(and(w, lanes), bias), add(and(shr(16, w), lanes), bias)))
         }
+        result := iszero(and(bad, carry))
     }
-    return result;
+}
+
+/// @notice Checks that `pubkey` is the canonical `setKey` encoding of a valid public key
+/// @dev Canonical encoding is abi.encode(uint256[] ntth) with ntth.length == 32 (1088 bytes),
+///      and every 16-bit coefficient of ntth must be < q.
+/// @param pubkey Encoded public key
+/// @return true iff the encoding is canonical and all coefficients are in range
+function falcon_checkKeyEncoding(bytes memory pubkey) pure returns (bool) {
+    if (pubkey.length != FALCON_PK_ENCODED_LEN) return false;
+    uint256 offset;
+    uint256[] memory ntth;
+    assembly ("memory-safe") {
+        offset := mload(add(pubkey, 32))
+        ntth := add(pubkey, 64) // length word followed by the 32 coefficients words
+    }
+    if (offset != 0x20) return false;
+    return falcon_checkCompactRange(ntth); // also checks that the length word is 32
+}
+
+/// @notice Loads a public key from an ERC-7913 key, i.e. the 20-byte address of a `setKey` pointer
+/// @dev Reverts unless `_pubkey` is exactly 20 bytes and points to a contract whose code is exactly
+///      FALCON_PK_CODE_SIZE bytes, starts with a STOP byte and holds the canonical key encoding.
+///      Coefficient ranges are checked later by falcon_core.
+/// @param _pubkey ERC-7913 key bytes
+/// @return ntth Public key in the NTT domain, compacted (32 words)
+function falcon_loadKeyPointer(bytes calldata _pubkey) view returns (uint256[] memory ntth) {
+    if (_pubkey.length != 20) revert("invalid public key length");
+    address pointer = address(bytes20(_pubkey));
+    if (pointer.code.length != FALCON_PK_CODE_SIZE) revert("invalid public key");
+
+    bool ok;
+    assembly ("memory-safe") {
+        let buf := mload(0x40)
+        // copy the whole code at buf+31 so that the STOP byte is the lowest byte of the word at buf
+        // and the encoded key starts at buf+32
+        extcodecopy(pointer, add(buf, 31), 0, FALCON_PK_CODE_SIZE)
+        ok := and(iszero(and(mload(buf), 0xff)), eq(mload(add(buf, 32)), 0x20))
+        ok := and(ok, eq(mload(add(buf, 64)), 32))
+        ntth := add(buf, 64)
+        mstore(0x40, add(buf, add(32, FALCON_PK_ENCODED_LEN)))
+    }
+    if (!ok) revert("invalid public key");
 }
 
 /// @notice Normalizes signature components and verifies L2 norm bound
@@ -98,9 +143,9 @@ function falcon_normalize(
 ///      2. Verifies ||s1||² + ||s2||² <= sigBound
 /// @dev Uses compacted polynomial representation for gas efficiency
 /// @param s2 Second signature component (32 uint256 words, compacted)
-/// @param ntth Public key in NTT domain (32 uint256 words, compacted)
+/// @param ntth Public key in NTT domain (32 uint256 words, compacted, every coefficient < q)
 /// @param hashed Hash-to-point result (512 coefficients)
-/// @return result true if signature is valid, false otherwise
+/// @return result true if signature is valid, false otherwise (including a malformed ntth)
 function falcon_core(
     uint256[] memory s2,
     uint256[] memory ntth, // public key, compacted 16  coefficients of 16 bits per word
@@ -111,10 +156,15 @@ function falcon_core(
 {
     if (hashed.length != 512) return false;
     if (s2.length != 32) return false; //"Invalid signature length"
+    // reject non-canonical public keys: wrong length or a coefficient >= q
+    // (otherwise ntth_i and ntth_i + k*q would be interchangeable)
+    if (!falcon_checkCompactRange(ntth)) return false;
 
-    result = false;
-
-    uint256[] memory s1 = _ZKNOX_NTT_Expand(_ZKNOX_NTT_HALFMUL_Compact(s2, ntth)); //build on top of specific NTT
+    // s1 = h*s2 = INTT(NTT(s2) * ntth). This is _ZKNOX_NTT_HALFMUL_Compact without the final
+    // compact/expand round trip, which is the identity on its < q output.
+    uint256[] memory s1 = _ZKNOX_NTTINV_vectorized(
+        _ZKNOX_VECMULMOD(_ZKNOX_NTTFW_vectorized(_ZKNOX_NTT_Expand(s2)), _ZKNOX_NTT_Expand(ntth))
+    );
 
     return falcon_normalize(s1, s2, hashed);
 }
