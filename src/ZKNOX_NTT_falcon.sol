@@ -10,6 +10,10 @@ import "./ZKNOX_falcon_utils.sol";
 
 //// internal version to spare call data cost
 
+/// @notice In-place forward NTT over Z_q
+/// @dev Correct for any uint256 input (products are reduced with mulmod before any subtraction).
+/// @param a 512 coefficients (modified in place)
+/// @return a the NTT of a, coefficients in [0, q)
 function _ZKNOX_NTTFW_vectorized(uint256[] memory a) pure returns (uint256[] memory) {
     uint256[32] memory psirev = [
         uint256(0x16e40c7b04bc29930e25261022510dd61fdb166802d22ae80fcb1be72a3a0001),
@@ -99,6 +103,12 @@ function _ZKNOX_VECMULMOD(uint256[] memory a, uint256[] memory b) pure returns (
     }
 }
 
+/// @notice In-place inverse NTT over Z_q, including the final scaling by n^-1
+/// @dev PRECONDITION: every input coefficient must be < q. The butterfly computes U - V as
+///      addmod(U, sub(q, V), q), which underflows (and gives a wrong result, since 2^256 is not 0 mod q)
+///      when V > q. All callers feed it _ZKNOX_VECMULMOD outputs, which are reduced mod q.
+/// @param a 512 coefficients, each < q (modified in place)
+/// @return a the inverse NTT of a, coefficients in [0, q)
 function _ZKNOX_NTTINV_vectorized(uint256[] memory a) pure returns (uint256[] memory) {
     uint256[32] memory psirev = [
         0x222b0db009f121dc066e2b452386191d05192d2f19991026141a203605c70001,

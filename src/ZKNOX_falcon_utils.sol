@@ -72,9 +72,13 @@ function Swap(uint256[] memory Pol) pure returns (uint256[] memory Mirror) {
 /// @notice Compacts an expanded polynomial from 512 uint256 values to 32 uint256 values
 /// @dev Packs 16 coefficients (each 16 bits) into each 256-bit word
 /// @dev Each word stores coefficients as: word = c0 | (c1<<16) | (c2<<32) | ... | (c15<<240)
-/// @param a Expanded polynomial (512 coefficients as separate uint256 values)
+/// @dev Each input is masked to 16 bits so that an out-of-range input cannot spill into the neighbouring
+///      coefficients (inputs are expected < 2^16; Falcon coefficients are < q). Not on the verifiers'
+///      hot path (falcon_core skips the compact/expand round trip), so the masking costs them nothing.
+/// @param a Expanded polynomial (exactly 512 coefficients as separate uint256 values)
 /// @return b Compacted polynomial (32 uint256 words, each containing 16 coefficients)
 function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b) {
+    if (a.length != 512) revert("invalid length");
     b = new uint256[](32);
 
     assembly ("memory-safe") {
@@ -83,7 +87,7 @@ function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b
         for { let i := 0 } lt(i, 512) { i := add(i, 1) } {
             aa := add(aa, 32)
             let bi := add(bb, mul(32, shr(4, i))) //shr(4,i)*32 !=shl(1,i)
-            mstore(bi, xor(mload(bi), shl(shl(4, and(i, 0xf)), mload(aa))))
+            mstore(bi, xor(mload(bi), shl(shl(4, and(i, 0xf)), and(mload(aa), 0xffff))))
         }
     }
 
@@ -93,9 +97,10 @@ function _ZKNOX_NTT_Compact(uint256[] memory a) pure returns (uint256[] memory b
 /// @notice Expands a compacted polynomial from 32 uint256 values to 512 uint256 values
 /// @dev Unpacks 16 coefficients (each 16 bits) from each 256-bit word into separate uint256 values
 /// @dev Inverse operation of _ZKNOX_NTT_Compact
-/// @param a Compacted polynomial (32 uint256 words)
+/// @param a Compacted polynomial (exactly 32 uint256 words)
 /// @return b Expanded polynomial (512 coefficients as separate uint256 values)
 function _ZKNOX_NTT_Expand(uint256[] memory a) pure returns (uint256[] memory b) {
+    if (a.length != 32) revert("invalid length");
     b = new uint256[](512);
 
     /*
