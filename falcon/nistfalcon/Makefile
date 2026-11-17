@@ -5,6 +5,18 @@
 # the implementation name (e.g. 'kat512int' for the 'falcon512int'
 # implementation). This program, when executed, generates the .req and
 # .rsp files in the expected NIST format.
+#
+# randombytes(): the KAT generators link src/katrng.c, the NIST
+# AES-256-CTR-DRBG, which they seed with randombytes_init() so that the
+# vectors are reproducible. Everything else (the regression tests here,
+# falcon.js and libfalcon.a, see ../makefile) links src/randombytes_os.c
+# (OS CSPRNG) instead. Never link both, and never link katrng.c into a
+# library or binary that produces real keys or signatures.
+#
+#   make          build the KAT generators
+#   make test     build and run the regression tests (tests/test_zknox.c)
+#   make check    make test, then regenerate all KAT files and compare
+#                 the NIST and ETH ones with ../../test/*.rsp
 
 .POSIX:
 
@@ -34,6 +46,9 @@ OBJ5_ETH = build/PQCgenKAT_hashtopoint_eth.o build/katrng.o
 OBJ6 = build/PQCgenKAT_falconcore.o build/katrng.o
 OBJ7 = build/PQCgenKAT_sign_eth.o build/katrng.o
 
+OBJ_TEST = build/test_zknox.o build/randombytes_os.o
+OBJ_TEST_ETH = build/test_zknox_eth.o build/randombytes_os.o
+
 HEAD1 = src/api.h src/fpr.h src/inner.h src/keccak_prng.h src/keccak256.h
 HEAD2 = src/api.h src/katrng.h
 
@@ -45,8 +60,24 @@ all: build build/kat512int build/kat512int_hashtopoint build/kat512int_falconcor
 build:
 	-mkdir build
 
+test: build build/test_zknox build/test_zknox_eth
+	./build/test_zknox
+	./build/test_zknox_eth
+
+check: test all
+	./build/kat512int
+	./build/kat512int_eth
+	./build/kat512int_zknox
+	./build/kat512int_zknox_eth
+	./build/kat512int_epervier_zknox
+	./build/kat512int_hashtopoint
+	./build/kat512int_hashtopoint_eth
+	./build/kat512int_falconcore
+	cmp PQCsignKAT_falcon512int.rsp ../../test/falcon512-KAT.rsp
+	cmp PQCsignKAT_falcon512int_eth.rsp ../../test/ethfalcon512-KAT.rsp
+
 clean:
-	-rm -f build/kat512int build/kat512int_zknox build/kat512int_epervier_zknox build/kat512int_hashtopoint build/kat512int_falconcore build/kat512int_eth build/sign_eth.o build/nist_eth.o build/nist16_eth.o $(OBJ1) $(OBJ1_ETH) $(OBJ2) $(OBJ3) $(OBJ3_ETH) $(OBJ4) $(OBJ5) $(OBJ6) $(OBJ7)
+	-rm -f build/kat512int build/kat512int_zknox build/kat512int_zknox_eth build/kat512int_epervier_zknox build/kat512int_hashtopoint build/kat512int_hashtopoint_eth build/kat512int_falconcore build/kat512int_eth build/test_zknox build/test_zknox_eth build/sign_eth.o build/nist_eth.o build/nist16_eth.o $(OBJ1) $(OBJ1_ETH) $(OBJ2) $(OBJ3) $(OBJ3_ETH) $(OBJ4) $(OBJ5) $(OBJ6) $(OBJ7) $(OBJ_TEST) $(OBJ_TEST_ETH)
 	find . -name '*.rsp' -delete
 	find . -name '*.req' -delete
 
@@ -73,6 +104,12 @@ build/kat512int_falconcore: $(OBJ1) $(OBJ6)
 
 build/kat512int_eth: $(OBJ1_ETH) $(OBJ7)
 	$(LD) $(LDFLAGS) -o build/kat512int_eth $(OBJ1_ETH) $(OBJ7) $(LIBS)
+
+build/test_zknox: $(OBJ1) $(OBJ_TEST)
+	$(LD) $(LDFLAGS) -o build/test_zknox $(OBJ1) $(OBJ_TEST) $(LIBS)
+
+build/test_zknox_eth: $(OBJ1_ETH) $(OBJ_TEST_ETH)
+	$(LD) $(LDFLAGS) -o build/test_zknox_eth $(OBJ1_ETH) $(OBJ_TEST_ETH) $(LIBS)
 
 build/codec.o: src/codec.c $(HEAD1)
 	$(CC) $(CFLAGS) -c -o build/codec.o src/codec.c
@@ -148,6 +185,15 @@ build/PQCgenKAT_falconcore.o: KAT/PQCgenKAT_falconcore.c $(HEAD2)
 
 build/katrng.o: src/katrng.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -c -o build/katrng.o src/katrng.c
+
+build/randombytes_os.o: src/randombytes_os.c
+	$(CC) $(CFLAGS) -c -o build/randombytes_os.o src/randombytes_os.c
+
+build/test_zknox.o: tests/test_zknox.c $(HEAD1)
+	$(CC) $(CFLAGS) -I src/ -c -o build/test_zknox.o tests/test_zknox.c
+
+build/test_zknox_eth.o: tests/test_zknox.c $(HEAD1)
+	$(CC) $(CFLAGS) -I src/ -DETHFALCON -c -o build/test_zknox_eth.o tests/test_zknox.c
 
 build/PQCgenKAT_sign_eth.o: KAT/PQCgenKAT_sign.c $(HEAD2)
 	$(CC) $(CFLAGS) -I src/ -DALGNAME=falcon512int -DETHFALCON \
