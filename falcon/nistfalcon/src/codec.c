@@ -488,7 +488,15 @@ Zf(comp_encode16)(
 	void *out, size_t max_out_len,
 	const int16_t *x, unsigned logn)
 {
-	// SAME AS `modq_encode16`
+	/*
+	 * Each coefficient is written as a 16-bit big-endian word holding
+	 * its representative modulo q = 12289 in 0..12288 (negative values
+	 * are written as x + q). comp_decode16() (and the on-chain
+	 * falcon_normalize) centre words at q/2: w > 6144 decodes as w - q.
+	 * Only coefficients in -6144..+6144 round-trip, so reject anything
+	 * else. Valid signatures are far inside that range (the norm bound
+	 * implies |x| <= 5833).
+	 */
 	size_t n, out_len, u;
 	uint8_t *buf;
 	uint32_t acc;
@@ -496,7 +504,7 @@ Zf(comp_encode16)(
 
 	n = (size_t)1 << logn;
 	for (u = 0; u < n; u ++) {
-		if (x[u] >= 12289 || x[u] <= -12289) {
+		if (x[u] > 6144 || x[u] < -6144) {
 			return 0;
 		}
 	}
@@ -513,7 +521,8 @@ Zf(comp_encode16)(
 	acc_len = 0;
 	for (u = 0; u < n; u ++) {
 		// append (positive representative of) x[u]
-		acc = (acc << 16) |  (x[u] + ((x[u] >> 31) & 12289));
+		acc = (acc << 16)
+			| (uint32_t)((int32_t)x[u] + (((int32_t)x[u] >> 31) & 12289));
 		acc_len += 16;
 		while (acc_len >= 8) {
 			acc_len -= 8;
@@ -624,16 +633,25 @@ Zf(comp_decode16)(
 		acc = (acc << 8) | (*buf ++);
 		acc_len += 8;
 		if (acc_len >= 16) {
-			int16_t w;
+			uint32_t w;
+			int32_t z;
 
 			acc_len -= 16;
 			w = (acc >> acc_len) & 0xFFFF;
+			/*
+			 * Canonical encoding only: the word must be in 0..q-1
+			 * (this rejects 12289..65535, including 0x8000..0xFFFF).
+			 */
 			if (w >= 12289) {
 				return 0;
 			}
-			// using the bound 2047 from the comments below
-			w -= 12289 & ~((w - 2047) >> 31);
-			x[u++] = w;
+			/*
+			 * Centre at q/2, as falcon_normalize does on-chain:
+			 * w in 6145..12288 stands for w - q.
+			 */
+			z = (int32_t)w;
+			z -= 12289 & -(int32_t)((6144 - w) >> 31);
+			x[u++] = (int16_t)z;
 		}
 	}
 	if ((acc & (((uint32_t)1 << acc_len) - 1)) != 0) {
