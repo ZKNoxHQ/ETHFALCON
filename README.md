@@ -13,9 +13,9 @@ This repo provides:
 
 The repo implements several versions of FALCON:
 
-* FALCON is the legacy NIST round3 compliant (tested against official [KATS](https://csrc.nist.gov/projects/post-quantum-cryptography/post-quantum-cryptography-standardization/round-3-submissions), just [here](https://github.com/ZKNoxHQ/ETHFALCON/blob/8152c5fc770e863bec799b5cc21dd551ab585fd9/test/ZKNOX_falconKATS.t.sol#L73)).
+* FALCON is the legacy NIST round3 compliant (tested against the 100 official [KATS](https://csrc.nist.gov/projects/post-quantum-cryptography/post-quantum-cryptography-standardization/round-3-submissions) in [test/falcon_KAT_file.t.sol](https://github.com/ZKNoxHQ/ETHFALCON/blob/main/test/falcon_KAT_file.t.sol), plus single vectors in [test/falconKATS.t.sol](https://github.com/ZKNoxHQ/ETHFALCON/blob/main/test/falconKATS.t.sol)).
 
-* ETHFALCON is an EVM friendly version, security equivalent replacing SHAKE by keccak to reduce costs.
+* ETHFALCON is an EVM friendly version, security equivalent replacing SHAKE by keccak to reduce costs (100 KAT vectors in [test/ethfalcon_KAT_file.t.sol](https://github.com/ZKNoxHQ/ETHFALCON/blob/main/test/ethfalcon_KAT_file.t.sol)).
 
 * EPERVIER is a 'FALCON with recovery' EVM version, enabling to mimic the ecrecover functionning (recover address from signature).
 
@@ -63,7 +63,18 @@ NIST KAT are made of
 	 *   message              mlen bytes
 	 *   signature            slen bytes
 
-Conversion from NIST KATS to ZKNOX encodings are performed by  ```decompress_KAT. ```
+Conversion from NIST KATS to ZKNOX encodings are performed by  ```decompress_KAT``` (`src/ZKNOX_falcon_encodings.sol`, a test helper, not used by the verifiers). It decodes strictly, as the NIST reference `crypto_sign_open`: `slen` must match the actual length (no trailing bytes), the compressed s2 must use exactly `slen - 1` bytes with zero padding bits and no "-0" coefficient, and the public key must be exactly 897 bytes. The public key it returns is in coefficient form: apply `_ZKNOX_NTTFW_vectorized` before compacting it into `ntth`.
+
+#### Keys from the ZKNOX C signer
+
+The ZKNOX C signer (`falcon/nistfalcon`, `zknox_crypto_sign_keypair*`, and `falcon/falcon.js`) outputs the public key **already in the NTT domain**: `0x09 || ntt(h)[i]` as 512 big-endian 16-bit words. Compact those words as-is into `ntth` (see `test/falconKATS.t.sol::test_kats_vector0_from_c`); applying the NTT again yields a key that rejects every signature.
+
+## INTEGRATION NOTES
+
+* **Public keys (`setKey` / ERC-7913).** `setKey(abi.encode(ntth))` stores the key in an SSTORE2 data contract and returns its 20-byte address, which is the ERC-7913 key passed to `verify(bytes pubkey, bytes32 digest, bytes sig)`. `setKey` is permissionless and only checks the key encoding (canonical `abi.encode(uint256[32])`, every coefficient `< q`): the account must store the returned pointer itself, and a key is only as trusted as that pointer. `verify` rejects a `pubkey` that is not exactly 20 bytes or that does not point to such a data contract. The same `ntth` can sit behind several pointers: deduplicate on `keccak256(ntth)` if key uniqueness matters (e.g. multisig).
+* **No domain binding.** No verifier binds the chain id, the verifying contract or a nonce, and a FALCON signature and an EPERVIER signature for the same key convert into each other (an EPERVIER signature for address A is a valid `ZKNOX_falcon` signature under the matching `ntth`, and conversely whenever `ntt(s2)` has no zero coefficient; same for ETHFALCON / ETHEPERVIER). Callers **must** put the domain (chain id, account, nonce, purpose) inside the signed message to prevent replay across chains, accounts and schemes.
+* **Failure semantics.** `verify(h, salt, s2, ntth)` reverts on malformed lengths (salt not 40 bytes, s2 or ntth not 32 words) and returns `false` for an invalid signature (including an out-of-range s2 coefficient or a public key coefficient `>= q`). The ERC-7913 `verify(pubkey, digest, sig)` reverts on a malformed `pubkey` or `sig` length and returns `0xFFFFFFFF` for an invalid signature. EPERVIER `recover` always **reverts** on invalid input or signature (out-of-range coefficients, norm too large, wrong or non-canonical hint, which must satisfy `0 < hint < q`); unlike `ecrecover`, it never returns `address(0)`. Wrap the call (`try`/`catch` or a low-level call) if a boolean result is needed.
+* **Messages.** `h` / `msgs` is the raw message, of any length: it is hashed together with the 40-byte salt by the hash-to-point (`SHAKE256(salt || msg)` or Keccak-CTR), so there is no need to pre-hash it.
 
 
 ## INSTALLATION
@@ -92,9 +103,9 @@ make bench
 
 | Function                   | Description               | gas cost | Tests Status |
 |------------------------|---------------------|---------------------|---------------------|
-| ZKNOX_falcon.verify       | NIST       | 3.9M | :white_check_mark:|
-| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.5 M | :white_check_mark:|
-| ZKNOX_epervier.verify       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
+| ZKNOX_falcon.verify       | NIST       | 3.8M | :white_check_mark:|
+| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.4 M | :white_check_mark:|
+| ZKNOX_ethepervier.recover       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
 
 
 ### Experimental (branches `exp/pq-verifier-gas` and `exp/falcon1024`, not on `main`)
@@ -116,7 +127,8 @@ top of the former) first. Both change the build profile (solc 0.8.30, via-IR,
 The gas cost is the execution of `verify` measured from the test contract on
 the NIST KAT (helper's EXTCODEHASH and its 9 or 17 permutation calls
 included, transaction base and calldata not): **8.75x** from `ZKNOX_falcon`
-(3,910,833 on `main`). As a plain transaction
+(3,910,833 on `main` when measured; 3,770,636 since the 2026-11-16 audit
+fixes, i.e. 8.4x). As a plain transaction
 (`verify(bytes h, bytes salt, uint256[] s2, uint256[] ntth)`, 16/4 gas per
 calldata byte):
 
@@ -191,7 +203,7 @@ Contract deployments are provided in [kohaku project](https://github.com/ethereu
 
 ## 7702 DELEGATION
 
-Before Native Account Abstraction is pushed, a demonstration of how to integrate FALCON in a 7702 delegation is provided in ZKNOX_IVerifierDelegate_7702.t.sol.
+Before Native Account Abstraction is pushed, FALCON can be integrated in a 7702 delegation through the ERC-7913 `verify(bytes pubkey, bytes32 digest, bytes sig)` entry point of `ZKNOX_falcon` / `ZKNOX_ethfalcon` (see [Integration notes](#integration-notes); it also works when reached through `DELEGATECALL`).
 
 One of Kohaku goals is to integrate these contracts in a 4337 account.
 
