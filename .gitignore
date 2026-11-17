@@ -13,11 +13,18 @@ docs/
 # Dotenv file
 .env
 
-# Falcon example files
-python-ref/sig
-python-ref/public_key.pem
-python-ref/private_key.pem
-pyython-ref/myenv/
+# Falcon key and signature files written by pythonref/sign_cli.py
+# (private_key.pem holds a secret key: never commit it, wherever it is)
+private_key.pem
+public_key.pem
+/sig
+pythonref/sig
+
+# Python
+pythonref/myenv/
+__pycache__/
+*.pyc
+
 /script/deploy_privateVerifier.sh
 /script/deploy_privateFalcon.sh
 
