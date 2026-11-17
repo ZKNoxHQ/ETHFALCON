@@ -20,7 +20,7 @@ contract FalconKATFileTest is Test {
         // Parse and verify test vectors
         uint256 count = 0;
         uint256 passCount = 0;
-        uint256 maxVectors = 10; // Test all 100 vectors from KAT file
+        uint256 maxVectors = 100; // Test all 100 vectors from KAT file
 
         // Split file into test vectors (separated by blank lines)
         string[] memory vectors = splitByDoubleNewline(katFile);
@@ -53,6 +53,7 @@ contract FalconKATFileTest is Test {
         }
 
         console.log("Passed:", passCount, "/", count);
+        assertEq(count, maxVectors, "not all KAT vectors were parsed");
         assertEq(passCount, count, "Some KAT vectors failed");
     }
 
