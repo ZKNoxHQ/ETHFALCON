@@ -82,7 +82,34 @@ Module().then((falcon) => {
     console.error("❌ Signature verification failed.");
   }
 
+  // Signing draws a fresh salt and sampler seed from the OS CSPRNG
+  // (crypto.getRandomValues): signing the same message again must give
+  // a different signature.
+  const signedMsgPtr2 = falcon._malloc(signedMsgMaxLen);
+  const signRet2 = falcon._zknox_crypto_sign(
+    signedMsgPtr2,
+    signedMsgLenPtr,
+    msgPtr,
+    BigInt(message.length),
+    skPtr
+  );
+  const sigLen2 = Number(readUint64(signedMsgLenPtr));
+  const signedMessage2 = Buffer.from(falcon.HEAPU8.subarray(signedMsgPtr2, signedMsgPtr2 + sigLen2));
+  const freshSalt = signRet2 === 0 &&
+    !signedMessage.subarray(2, 42).equals(signedMessage2.subarray(2, 42));
+  console.log("🎲 Fresh salt per signature:", freshSalt ? "✅ PASS" : "❌ FAIL");
+
+  // Wipe secret material (secret keys, seed) before releasing the memory:
+  // _free() does not clear the WASM heap.
+  falcon.HEAPU8.fill(0, skPtr, skPtr + skLen);
+  falcon.HEAPU8.fill(0, skPtr2, skPtr2 + skLen);
+  falcon.HEAPU8.fill(0, seedPtr, seedPtr + seed.length);
+
   // Free memory
-  [pkPtr, skPtr, pkPtr2, skPtr2, seedPtr, msgPtr, signedMsgPtr, signedMsgLenPtr, recoveredMsgPtr, recoveredLenPtr]
+  [pkPtr, skPtr, pkPtr2, skPtr2, seedPtr, msgPtr, signedMsgPtr, signedMsgPtr2, signedMsgLenPtr, recoveredMsgPtr, recoveredLenPtr]
     .forEach(ptr => falcon._free(ptr));
+
+  if (verifyRet !== 0 || !publicKey.equals(publicKey2) || !freshSalt) {
+    process.exitCode = 1;
+  }
 });

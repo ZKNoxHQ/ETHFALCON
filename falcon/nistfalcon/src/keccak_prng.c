@@ -11,16 +11,18 @@
  * 1. State Management:
  *    - Maintains a 32-byte state derived from input data
  *    - Uses a 64-bit counter for expandable output
- *    - Includes a buffer for accumulating input before finalization
+ *    - Absorbs input incrementally into a Keccak-256 context before
+ *      finalization (no limit on the input length)
  *    - Maintains an output buffer to store unused random bytes
  *
  * 2. Operation Phases:
  *    a) Input Phase (before finalization):
- *       - Accumulate arbitrary input data into buffer
- *       - Can receive multiple inputs through inject function
+ *       - Absorb arbitrary input data into the Keccak-256 context
+ *       - Can receive multiple inputs through inject function; the
+ *         result is the same as one inject of the concatenation
  *
  *    b) Finalization Phase:
- *       - Processes all input using Keccak-256 to create initial state
+ *       - state = Keccak-256(all input)
  *       - Locks further input
  *
  *    c) Output Phase (after finalization):
@@ -44,9 +46,8 @@ int Zf(i_keccak256_init)(inner_keccak256_prng_ctx *sc)
     if (!sc)
         return -1;
 
-    memset(sc->buffer, 0, MAX_BUFFER_SIZE);
+    keccak_init(&sc->absorb);
     memset(sc->state, 0, KECCAK256_OUTPUT);
-    sc->buffer_len = 0;
     sc->counter = 0;
     sc->finalized = 0;
 
@@ -62,20 +63,21 @@ int Zf(i_keccak256_init)(inner_keccak256_prng_ctx *sc)
  */
 int Zf(i_keccak256_inject)(inner_keccak256_prng_ctx *sc, const uint8_t *in, size_t len)
 {
-    if (!sc || !in)
+    if (!sc || (!in && len != 0))
         return -1;
     if (sc->finalized)
         return -2;
 
-    // Check if we have enough space in buffer
-    if (sc->buffer_len + len > MAX_BUFFER_SIZE)
+    // Absorb incrementally; keccak_update() takes a 16-bit length, so
+    // feed it in chunks. Chunking does not change the resulting hash.
+    while (len > 0)
     {
-        return -3; // Buffer would overflow
-    }
+        uint16_t chunk = (len > 0x8000) ? (uint16_t)0x8000 : (uint16_t)len;
 
-    // Append new data to buffer
-    memcpy(sc->buffer + sc->buffer_len, in, len);
-    sc->buffer_len += len;
+        keccak_update(&sc->absorb, in, chunk);
+        in += chunk;
+        len -= chunk;
+    }
     return 0;
 }
 
@@ -89,10 +91,8 @@ int Zf(i_keccak256_flip)(inner_keccak256_prng_ctx *sc)
     if (sc->finalized)
         return -2;
 
-    SHA3_CTX keccak_ctx;
-    keccak_init(&keccak_ctx);
-    keccak_update(&keccak_ctx, sc->buffer, sc->buffer_len);
-    keccak_final(&keccak_ctx, sc->state);
+    keccak_final(&sc->absorb, sc->state);
+    memset(&sc->absorb, 0, sizeof sc->absorb);
 
     sc->finalized = 1;
 
