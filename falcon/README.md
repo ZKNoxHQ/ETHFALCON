@@ -11,8 +11,8 @@ Emscripten is a complete compiler toolchain to WebAssembly, using LLVM. It is re
  ```bash
 git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk
-./emsdk install latest
-./emsdk activate latest
+./emsdk install 5.0.1   # pinned: must match EMSDK_VERSION in falcon/makefile
+./emsdk activate 5.0.1
 source ./emsdk_env.sh
  ```
 
