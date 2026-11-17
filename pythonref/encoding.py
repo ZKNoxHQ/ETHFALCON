@@ -3,6 +3,13 @@ Compression and decompression routines for signatures.
 """
 
 
+# Largest absolute value of a coefficient that the compressed format can
+# carry, as in the Falcon specification and the NIST reference code
+# (`comp_encode` / `comp_decode`): 7 low bits plus at most 15 high-part
+# zeros in unary.
+MAX_COMPRESSED_COEF = 2047
+
+
 def compress(v, slen):
     """
     Take as input a list of integers v and a bytelength slen, and
@@ -16,6 +23,9 @@ def compress(v, slen):
     """
     u = ""
     for coef in v:
+        # Coefficients outside [-2047, 2047] are not encodable (Falcon spec)
+        if abs(coef) > MAX_COMPRESSED_COEF:
+            return False
         # Encode the sign
         s = "1" if coef < 0 else "0"
         # Encode the low bits
@@ -37,46 +47,52 @@ def decompress(x, slen, n):
     Take as input an encoding x, a bytelength slen and a length n, and
     return a list of integers v of length n such that x encode v.
     If such a list does not exist, the encoding is invalid and we output False.
+
+    Only the canonical encoding is accepted (as in the NIST reference code):
+    - |coef| <= 2047, i.e. at most 15 zeros in the unary high part;
+    - "-0" is rejected;
+    - every bit after the n-th coefficient (padding bits of the last byte
+      and padding bytes) must be zero.
+    Malformed input (empty, all-zero, truncated) returns False and never
+    raises.
     """
-    if (len(x) > slen):
-        print("Too long")
+    if len(x) > slen:
         return False
-    w = list(x)
-    u = ""
-    for elt in w:
-        u += bin((1 << 8) ^ elt)[3:]
+    max_high = MAX_COMPRESSED_COEF >> 7
+    bits = "".join(format(b, "08b") for b in x)
+    nbits = len(bits)
     v = []
-
-    # Remove the last bits
-    while u[-1] == "0":
-        u = u[:-1]
-
-    try:
-        while (u != "") and (len(v) < n):
-            # Recover the sign of coef
-            sign = -1 if u[0] == "1" else 1
-            # Recover the 7 low bits of abs(coef)
-            low = int(u[1:8], 2)
-            i, high = 8, 0
-            # Recover the high bits of abs(coef)
-            while (u[i] == "0"):
-                i += 1
-                high += 1
-            # Compute coef
-            coef = sign * (low + (high << 7))
-            # Enforce a unique encoding for coef = 0
-            if (coef == 0) and (sign == -1):
-                return False
-            # Store intermediate results
-            v += [coef]
-            u = u[i + 1:]
-        # In this case, the encoding is invalid
-        if (len(v) != n):
+    pos = 0
+    for _ in range(n):
+        # Sign bit and the 7 low bits of abs(coef)
+        if pos + 8 > nbits:
             return False
-        return v
-    # IndexError is raised if indices are read outside the table bounds
-    except IndexError:
+        sign = bits[pos]
+        low = int(bits[pos + 1:pos + 8], 2)
+        pos += 8
+        # High bits of abs(coef), in unary, terminated by a "1"
+        high = 0
+        while True:
+            if pos >= nbits:
+                return False
+            bit = bits[pos]
+            pos += 1
+            if bit == "1":
+                break
+            high += 1
+            if high > max_high:
+                return False
+        coef = low + (high << 7)
+        if sign == "1":
+            # Enforce a unique encoding for coef = 0
+            if coef == 0:
+                return False
+            coef = -coef
+        v.append(coef)
+    # Padding bits must be zero
+    if "1" in bits[pos:]:
         return False
+    return v
 
 def decode16(x:bytes, n: int, q=12289):
     """

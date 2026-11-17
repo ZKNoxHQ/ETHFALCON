@@ -72,17 +72,18 @@ def extract_signature_from_sm(sm_hex, mlen):
     """
     Extract signature from signed message format.
 
-    Solidity format: slen(2) + salt(40) + message(mlen) + header(0x29) + compressed_sig
-    Python format: header(0x39) + salt(40) + compressed_sig
+    NIST format: slen(2) + salt(40) + message(mlen) + header(0x29) + compressed_sig
+    Python format: header(0x29) + salt(40) + compressed_sig
     """
     sm_bytes = bytes.fromhex(sm_hex)
 
-    # Extract components from Solidity format
+    # Extract components from the NIST signed-message format
     salt = sm_bytes[2:42]  # Skip slen(2), take salt(40)
+    header = sm_bytes[42 + mlen:42 + mlen + 1]
     compressed_sig = sm_bytes[42 + mlen + 1:]  # Skip slen + salt + message + header
 
-    # Build Python signature format
-    python_sig = bytes([0x39]) + salt + compressed_sig
+    # Build Python signature format (the verifier checks the header byte)
+    python_sig = header + salt + compressed_sig
 
     return python_sig
 

@@ -7,17 +7,20 @@ from hashlib import blake2s
 # https://github.com/zhenfeizhang/falcon-go/blob/main/c/keccak_prng.c
 # but with Blake2s as the internal hash function (implemented in hashlib)
 
+# The input is absorbed incrementally, so there is no cap on its length:
+#   state   = blake2s(input)
+#   block_i = blake2s(state || uint64_be(i)),  i = 0, 1, ...
+
 # Constants
-MAX_BUFFER_SIZE = 1024  # Adjust based on needs
-BLAKE2S_OUTPUT = 32  # Keccak output size in bytes
+BLAKE2S_OUTPUT = 32  # Blake2s output size in bytes
 
 
 class Blake2sPRNG:
     def __init__(self):
-        """ Initialize a Keccak PRNG context. """
-        self.buffer = bytearray(MAX_BUFFER_SIZE)
+        """ Initialize a Blake2s PRNG context. """
+        # Streaming absorption of the input (no length limit)
+        self.absorber = blake2s(digest_size=BLAKE2S_OUTPUT)
         self.state = bytearray(BLAKE2S_OUTPUT)
-        self.buffer_len = 0
         self.counter = 0
         self.finalized = False
 
@@ -35,22 +38,16 @@ class Blake2sPRNG:
         if self.finalized:
             raise ValueError("Cannot inject after finalizing")
 
-        if len(data) + self.buffer_len > MAX_BUFFER_SIZE:
-            raise ValueError("Buffer overflow")
-
-        self.buffer[self.buffer_len:self.buffer_len + len(data)] = data
-        self.buffer_len += len(data)
+        self.absorber.update(bytes(data))
 
     def flip(self):
         """ Finalize the PRNG state and prepare for output generation. """
         if self.finalized:
             raise ValueError("Already finalized")
 
-        blake2s_ctx = blake2s(digest_size=BLAKE2S_OUTPUT)
-        blake2s_ctx.update(self.buffer[:self.buffer_len])
-
         # Generate initial state
-        self.state = blake2s_ctx.digest()
+        self.state = self.absorber.digest()
+        self.absorber = None
         self.finalized = True
 
         # Reset output buffer
