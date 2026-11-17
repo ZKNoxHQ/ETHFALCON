@@ -11,6 +11,9 @@ from eth_abi.packed import encode_packed
 # Randomness
 from os import urandom
 
+# Signature header byte: 0x30 + logn (0x39 for n = 512).
+RECOVERY_HEADER_BASE = 0x30
+
 
 class EpervierPublicKey:
 
@@ -25,6 +28,15 @@ class EpervierPublicKey:
         """
         Recover a public key.
         """
+        # Fixed format: header (0x30 + logn) || salt (40 bytes)
+        # || compressed (s0, s1) padded to 2 * sig_bytelen - 41 bytes
+        # || s1^-1 in NTT form (3 bytes per coefficient, each < q).
+        if len(signature) != self.sig_bytelen * 2 + self.n * 3:
+            print("Invalid signature length")
+            return False
+        if signature[0] != RECOVERY_HEADER_BASE + logn[self.n]:
+            print("Invalid signature header")
+            return False
         # Unpack the salt and the short polynomial s1
         salt = signature[HEAD_LEN:HEAD_LEN + SALT_LEN]
         enc_s = signature[HEAD_LEN+SALT_LEN:-self.n*3]
@@ -41,6 +53,10 @@ class EpervierPublicKey:
         byte_s_1_inv_ntt = signature[-self.n*3:]
         s_1_inv_ntt = [int.from_bytes(byte_s_1_inv_ntt[i:i+3], 'big')
                        for i in range(0, len(byte_s_1_inv_ntt), 3)]
+        # Canonical hint: every entry must be reduced mod q
+        if any(elt >= q for elt in s_1_inv_ntt):
+            print("Invalid hint")
+            return False
         T = ntt(q)
         # check that s_1_inv_ntt * s_1_ntt == [1, ... , 1]
         mul_s1_s1inv = T.vec_mul(s_1_inv_ntt, s_1_ntt)
@@ -70,7 +86,7 @@ class EpervierPublicKey:
     def verify(self, message, signature, ntt=NTTIterative, xof=KeccakPRNG):
         pk_rec = self.recover(message, signature,
                               ntt=ntt, xof=xof)
-        return pk_rec == self.pk
+        return pk_rec is not False and pk_rec == self.pk
 
 
 class EpervierSecretKey(SecretKey):
@@ -84,13 +100,20 @@ class EpervierSecretKey(SecretKey):
         K.pad()
         self.pk = int.from_bytes(K.squeeze(32)[-20:], byteorder='big')
 
+    def public_key(self):
+        """Public key (address) object matching this secret key."""
+        return EpervierPublicKey(self.n, self.pk)
+
     def sign(self, message, randombytes=urandom, xof=KeccakPRNG):
         """
         Sign a message. The message MUST be a byte string or byte array.
         Optionally, one can select the source of (pseudo-)randomness used
-        (default: urandom).
+        (default: urandom). A custom `randombytes` MUST be secret (e.g.
+        `self.signing_randombytes(message)`): it yields the salt and every
+        per-attempt sampler seed. The signature is verified before being
+        returned.
         """
-        int_header = 0x30 + logn[self.n]
+        int_header = RECOVERY_HEADER_BASE + logn[self.n]
         header = int_header.to_bytes(1, "little")
 
         salt = randombytes(SALT_LEN)
@@ -122,4 +145,8 @@ class EpervierSecretKey(SecretKey):
                                                 for x in s_1_inv_ntt)
                     # Check that the encoding is valid (sometimes it fails)
                     if enc_s is not False:
-                        return header + salt + enc_s + bytes_s1_inv_ntt
+                        sig = header + salt + enc_s + bytes_s1_inv_ntt
+                        if not self.check_signature(message, sig, xof):
+                            raise ValueError(
+                                "Signature self-check failed: inconsistent secret key")
+                        return sig
