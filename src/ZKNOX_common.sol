@@ -6,6 +6,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
+// TODO: FALCONSHAKE_ID and FALCONKECCAK_ID are unverified placeholders: they do not look like registered
+// Falcon / FN-DSA OIDs and have not been checked against the registry. They are not used by any contract
+// in this repository; do not rely on them as algorithm identifiers.
 /// @dev Falcon-SHAKE256 algorithm identifier
 /// @dev OID: 2.16.840.1.101.3.4.3.21 (joint-iso-ccitt(2) country(16) us(840) organization(1) gov(101) csor(3) algorithms(4) id-falcon-shake(3) 21)
 uint256 constant FALCONSHAKE_ID = 0x216840110134321;

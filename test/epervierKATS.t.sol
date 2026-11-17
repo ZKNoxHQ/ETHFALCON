@@ -4,7 +4,7 @@ import {Test, console} from "forge-std/Test.sol";
 import "../src/ZKNOX_falcon_encodings.sol";
 import "../src/ZKNOX_epervier.sol";
 import "../src/ZKNOX_falcon_deploy.sol";
-import "../src/ZKNOX_display.sol";
+import "./ZKNOX_display.sol";
 
 contract EpervierKATS_Test is Test {
     ZKNOX_epervier epervier;

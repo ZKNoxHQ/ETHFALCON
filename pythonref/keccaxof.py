@@ -17,8 +17,8 @@ class KeccaXOF:
             raise ValueError('KeccaXOF.update() called after digest()')
         self.input.append(data)
 
-    def read(self, bytes):
-        to_slice = bytes * 2
+    def read(self, length):
+        to_slice = length * 2
         if self.last is None:
             keccak_hash = keccak.new(digest_bits=256)
             keccak_hash.update(encode_packed(
@@ -34,7 +34,7 @@ class KeccaXOF:
 
         buff = self.tmp[:to_slice]
         self.tmp = self.tmp[to_slice:]
-        return int(buff, 16).to_bytes(2, 'big')
+        return bytes.fromhex(buff)
 
     def flip(self):
         return

@@ -29,6 +29,17 @@ make
     ```
     It is possible to recover a public key in solidity using EPERVIER from the vectors of the file `PQCsignKAT_falcon512int_epervier_zknox.rsp`, as shown in [this file](../../../test/ZKNOX_epervierKATS.t.sol).
 
+## Randomness
+`randombytes()` has two implementations, and a build links exactly one of them:
+* `src/randombytes_os.c` uses the operating system CSPRNG (`getentropy()` under Emscripten, which maps to `crypto.getRandomValues`; `getrandom()` on Linux; `getentropy()` on macOS/BSD). It is used by `falcon.js`, `libfalcon.a` (see `../makefile`) and the regression tests. On failure it returns an error and keygen/sign return `-1`; there is no fallback.
+* `src/katrng.c` is the deterministic NIST KAT DRBG. Only the KAT generators (`build/kat512int*`) link it, and they seed it with `randombytes_init()` so that the vectors are reproducible. Never link it into code that produces real keys or signatures.
+
+## Tests
+```bash
+make test   # regression tests (tests/test_zknox.c), SHAKE and Keccak variants
+make check  # make test, then regenerate all KAT files and compare the NIST and ETH ones with ../../test/*.rsp
+```
+
 ## Solidity binding
 The commands above should create the following files:
 ```bash

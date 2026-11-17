@@ -7,8 +7,10 @@ from numpy import set_printoptions
 from math import sqrt
 from fft import fft, ifft, sub, neg, add_fft, mul_fft
 from ffsampling import gram, ffldl_fft, ffsampling_fft
-from ntrugen import ntru_gen
+from ntrugen import ntru_gen, karamul, gs_norm
+from samplerz import MAX_SIGMA
 from encoding import compress, decompress
+from Crypto.Hash import SHAKE256
 from keccak_prng import KeccakPRNG
 from shake import SHAKE
 from blake2s_prng import Blake2sPRNG
@@ -44,6 +46,18 @@ logn = {
 HEAD_LEN = 1
 SALT_LEN = 40
 SEED_LEN = 48
+
+# Signature header byte: 0x20 + logn for (ETH)FALCON, as in the NIST
+# reference `crypto_sign` (0x29 for n = 512).
+FALCON_HEADER_BASE = 0x20
+
+# Derivation of the signing randomness (salt and sampler coins) when the
+# caller does not want to pass os.urandom directly, see
+# `SecretKey.signing_randombytes`.
+SIGN_SEED_DOMAIN = b"ETHFALCON/pythonref/sign-seed/v1"
+HEDGE_LEN = 32
+SIGN_MODE_HEDGED = b"\x00"
+SIGN_MODE_DETERMINISTIC = b"\x01"
 
 
 # Parameter sets for Falcon:
@@ -183,6 +197,34 @@ def normalize_tree(tree, sigma):
         tree[1] = 0
 
 
+def tree_leaves(tree):
+    """Return the leaves of a (normalized) LDL tree."""
+    if len(tree) == 3:
+        return tree_leaves(tree[1]) + tree_leaves(tree[2])
+    return [tree[0]]
+
+
+def check_ntru_equation(f, g, F, G):
+    """Return True iff f * G - g * F = q mod (x^n + 1), over the integers."""
+    n = len(f)
+    lhs = karamul(f, G)
+    rhs = karamul(g, F)
+    return [lhs[i] - rhs[i] for i in range(n)] == [q] + [0] * (n - 1)
+
+
+def encode_secret_polys(polys):
+    """
+    Unambiguous byte encoding of the secret basis (f, g, F, G), used as the
+    key of the signing randomness derivation. It is never written anywhere.
+    """
+    out = bytearray()
+    for poly in polys:
+        out += len(poly).to_bytes(2, "big")
+        for coef in poly:
+            out += int(coef).to_bytes(4, "big", signed=True)
+    return bytes(out)
+
+
 def hash_to_point(n, message, salt, xof=KeccakPRNG):
     """
     Hash a message to a point in Z[x] mod(Phi, q).
@@ -287,7 +329,20 @@ class PublicKey:
     def verify(self, message, signature, ntt=NTTIterative, xof=KeccakPRNG):
         """
         Verify a signature.
+
+        Format: header (0x20 + logn) || salt (40 bytes) || compressed s1.
+        Malformed signatures (wrong header, short salt, non-canonical
+        encoding) are rejected and never raise.
         """
+        # The header, the full 40-byte salt and at least one byte of s1
+        # must be present. A fixed-length salt is what prevents the
+        # salt/message concatenation ambiguity (see forgery.py).
+        if len(signature) <= HEAD_LEN + SALT_LEN or len(signature) > self.sig_bytelen:
+            print("Invalid signature length")
+            return False
+        if signature[0] != FALCON_HEADER_BASE + logn[self.n]:
+            print("Invalid signature header")
+            return False
         # Unpack the salt and the short polynomial s1
         salt = signature[HEAD_LEN:HEAD_LEN + SALT_LEN]
         enc_s = signature[HEAD_LEN + SALT_LEN:]
@@ -375,6 +430,72 @@ class SecretKey:
         self.h = poly_h.coeffs
         self.hash_to_point = hash_to_point
 
+    def validate(self):
+        """
+        Check that the secret key is a well-formed Falcon key, and raise
+        ValueError otherwise:
+        - f * G - g * F = q mod (x^n + 1);
+        - f is invertible mod q and h = g / f mod q;
+        - the Gram-Schmidt norm of the basis is within the key generation
+          bound, so that every leaf of the normalized LDL tree lies in
+          [sigmin, MAX_SIGMA] as the sampler requires.
+        """
+        if not check_ntru_equation(self.f, self.g, self.F, self.G):
+            raise ValueError("Invalid secret key: f*G - g*F != q")
+        T = NTTIterative(q)
+        f_ntt = T.ntt([coef % q for coef in self.f])
+        if any(elt == 0 for elt in f_ntt):
+            raise ValueError("Invalid secret key: f is not invertible mod q")
+        g_ntt = T.ntt([coef % q for coef in self.g])
+        h_ntt = T.ntt([coef % q for coef in self.h])
+        if T.vec_mul(h_ntt, f_ntt) != g_ntt:
+            raise ValueError("Invalid secret key: h != g / f mod q")
+        if gs_norm(self.f, self.g, q) > (1.17 ** 2) * q:
+            raise ValueError("Invalid secret key: Gram-Schmidt norm too large")
+        for leaf in tree_leaves(self.T_fft):
+            if not (self.sigmin * (1 - 1e-9) <= leaf <= MAX_SIGMA):
+                raise ValueError("Invalid secret key: LDL tree out of bounds")
+        return True
+
+    def public_key(self):
+        """Public key object matching this secret key."""
+        return PublicKey(self.n, self.h)
+
+    def check_signature(self, message, signature, xof):
+        """Verify a freshly produced signature with the matching public key."""
+        return self.public_key().verify(message, signature, xof=xof)
+
+    def signing_randombytes(self, message, context=b"", deterministic=False):
+        """
+        Return a `randombytes`-like function to pass to `sign`, derived as
+
+            SHAKE256(SIGN_SEED_DOMAIN || mode || len(context) || context
+                     || encode(f, g, F, G) || entropy || message)
+
+        - hedged (default): entropy = 32 fresh bytes from os.urandom, so two
+          signatures of the same message differ, and a weak RNG alone does
+          not expose the sampler coins;
+        - deterministic: no fresh entropy. The output is reproducible for a
+          given (key, context, message) and still secret, because it is
+          keyed by the secret basis (never by the public key h).
+
+        `context` separates uses of one key (e.g. the signature version).
+        """
+        if len(context) > 0xFFFF:
+            raise ValueError("context too long")
+        if deterministic:
+            mode, entropy = SIGN_MODE_DETERMINISTIC, b""
+        else:
+            mode, entropy = SIGN_MODE_HEDGED, urandom(HEDGE_LEN)
+        prng = SHAKE256.new()
+        prng.update(SIGN_SEED_DOMAIN)
+        prng.update(mode)
+        prng.update(len(context).to_bytes(2, "big") + bytes(context))
+        prng.update(encode_secret_polys([self.f, self.g, self.F, self.G]))
+        prng.update(entropy)
+        prng.update(bytes(message))
+        return prng.read
+
     def __repr__(self, verbose=False):
         """Print the object in readable form."""
         rep = "Private key for n = {n}:\n\n".format(n=self.n)
@@ -443,9 +564,11 @@ class SecretKey:
         """
         Sign a message. The message MUST be a byte string or byte array.
         Optionally, one can select the source of (pseudo-)randomness used
-        (default: urandom).
+        (default: urandom). A custom `randombytes` MUST be secret (e.g.
+        `self.signing_randombytes(message)`): it yields the salt and every
+        sampler coin. The signature is verified before being returned.
         """
-        int_header = 0x20 + logn[self.n]
+        int_header = FALCON_HEADER_BASE + logn[self.n]
         header = int_header.to_bytes(1, "little")
 
         salt = randombytes(SALT_LEN)
@@ -474,4 +597,8 @@ class SecretKey:
                     s[1], self.sig_bytelen - HEAD_LEN - SALT_LEN)
                 # Check that the encoding is valid (sometimes it fails)
                 if (enc_s is not False):
-                    return header + salt + enc_s
+                    sig = header + salt + enc_s
+                    if not self.check_signature(message, sig, xof):
+                        raise ValueError(
+                            "Signature self-check failed: inconsistent secret key")
+                    return sig

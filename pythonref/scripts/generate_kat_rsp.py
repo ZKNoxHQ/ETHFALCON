@@ -222,7 +222,7 @@ def sign_message(sk, msg_hex, seed_hex):
     sig = sk.sign(msg, randombytes=prng.read, xof=KeccakPRNG)
 
     # Extract components from Python signature
-    python_header = sig[0:1]  # First byte (e.g., 0x39)
+    python_header = sig[0:1]  # First byte (0x29 for n = 512)
     salt = sig[1:41]  # Bytes 1-40
     compressed_sig = sig[41:]  # Rest is compressed signature
 
@@ -311,7 +311,7 @@ def generate_rsp(req_file, rsp_file):
             pk_temp = PublicKey(sk_obj.n, sk_obj.h)
             msg_bytes = bytes.fromhex(msg)
             # Reconstruct Python signature format from Solidity format for verification
-            python_sig = bytes([0x39]) + bytes.fromhex(sm)[2:42] + bytes.fromhex(sm)[42 + mlen + 1:]
+            python_sig = bytes.fromhex(sm)[42 + mlen:42 + mlen + 1] + bytes.fromhex(sm)[2:42] + bytes.fromhex(sm)[42 + mlen + 1:]
             if not pk_temp.verify(msg_bytes, python_sig, xof=KeccakPRNG):
                 raise ValueError(f"Generated signature for vector {count} failed verification!")
 

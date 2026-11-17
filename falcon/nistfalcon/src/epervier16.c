@@ -21,13 +21,31 @@
  */
 #define TEMPALLOC
 
+/*
+ * randombytes() is provided by randombytes_os.c (OS CSPRNG) or, in the
+ * KAT generators only, by katrng.c. It returns 0 on success.
+ */
 int randombytes(unsigned char *x, unsigned long long xlen);
+
+/*
+ * Signature length field: header + s1 (1 + 1024 bytes), header + s2
+ * (1 + 1024 bytes), hint (2 bytes).
+ */
+#define EPERVIER_SIG_LEN (2 * (1 + 1024) + 2)
+
+/*
+ * Largest message length accepted by zknox_crypto_sign_epervier(): the
+ * signed message must fit in a size_t (wasm32: 32-bit size_t).
+ */
+#define MAX_MLEN ((unsigned long long)(SIZE_MAX - ZKNOX_CRYPTO_BYTES_EPERVIER))
 
 int
 zknox_pk_epervier(unsigned char *pk)
 {
-	// Additional NTT for epervier
-	// Hash is not computed here
+	// zknox_crypto_sign_keypair() already outputs h in NTT form (not in
+	// Montgomery representation), which is the EPERVIER public key.
+	// This only checks and re-encodes it; the address hash is not
+	// computed here.
 	TEMPALLOC uint16_t h[512];
 	size_t v;
 
@@ -40,9 +58,6 @@ zknox_pk_epervier(unsigned char *pk)
 	{
 		return -1;
 	}
-
-	// NTT not in montgomery representation
-	Zf(to_ntt)(h, 9);
 
 	/*
 	 * Re-encode public key.
@@ -79,49 +94,61 @@ zknox_crypto_sign_epervier(unsigned char *sm, unsigned long long *smlen,
 	TEMPALLOC unsigned char esig[ZKNOX_CRYPTO_BYTES_EPERVIER - sizeof nonce - 2];
 	TEMPALLOC inner_shake256_context sc;
 	size_t u, v, sig_len, s2_len;
+	int ret;
+
+	/*
+	 * Reject lengths that do not fit in a size_t.
+	 */
+	if (mlen > MAX_MLEN) {
+		return -1;
+	}
+	ret = -1;
+
 	/*
 	 * Decode the private key.
 	 */
 	if (sk[0] != 0x50 + 9) {
-		return -1;
+		goto cleanup;
 	}
 	u = 1;
 	v = Zf(trim_i8_decode)(f, 9, Zf(max_fg_bits)[9],
 		sk + u, CRYPTO_SECRETKEYBYTES - u);
 	if (v == 0) {
-		return -1;
+		goto cleanup;
 	}
 	u += v;
 	v = Zf(trim_i8_decode)(g, 9, Zf(max_fg_bits)[9],
 		sk + u, CRYPTO_SECRETKEYBYTES - u);
 	if (v == 0) {
-		return -1;
+		goto cleanup;
 	}
 	u += v;
 	v = Zf(trim_i8_decode)(F, 9, Zf(max_FG_bits)[9],
 		sk + u, CRYPTO_SECRETKEYBYTES - u);
 	if (v == 0) {
-		return -1;
+		goto cleanup;
 	}
 	u += v;
 	if (u != CRYPTO_SECRETKEYBYTES) {
-		return -1;
+		goto cleanup;
 	}
 	if (!Zf(complete_private)(G, f, g, F, 9, tmp.b)) {
-		return -1;
+		goto cleanup;
 	}
 
 	/*
 	 * Create a random nonce (40 bytes).
 	 */
-	randombytes(nonce, sizeof nonce);
+	if (randombytes(nonce, sizeof nonce) != 0) {
+		goto cleanup;
+	}
 
 	/*
 	 * Hash message nonce + message into a vector.
 	 */
 	inner_shake256_init(&sc);
 	inner_shake256_inject(&sc, nonce, sizeof nonce);
-	inner_shake256_inject(&sc, m, mlen);
+	inner_shake256_inject(&sc, m, (size_t)mlen);
 	inner_shake256_flip(&sc);
 	Zf(hash_to_point_vartime)(&sc, r.hm, 9);
 
@@ -129,7 +156,9 @@ zknox_crypto_sign_epervier(unsigned char *sm, unsigned long long *smlen,
 	/*
 	 * Initialize a RNG.
 	 */
-	randombytes(seed, sizeof seed);
+	if (randombytes(seed, sizeof seed) != 0) {
+		goto cleanup;
+	}
 	inner_shake256_init(&sc);
 	inner_shake256_inject(&sc, seed, sizeof seed);
 	inner_shake256_flip(&sc);
@@ -157,13 +186,13 @@ zknox_crypto_sign_epervier(unsigned char *sm, unsigned long long *smlen,
 	esig[0] = 0x20 + 9;
 	sig_len = Zf(comp_encode16)(esig + 1, 1024, s1, 9);
 	if (sig_len == 0) {
-		return -1;
+		goto cleanup;
 	}
 	sig_len ++;
 	esig[sig_len] = 0x20 + 9;
 	s2_len = Zf(comp_encode16)(esig + sig_len + 1, 1024, s2, 9);
 	if (s2_len == 0) {
-		return -1;
+		goto cleanup;
 	}
 	sig_len += s2_len;
 	sig_len ++;
@@ -172,15 +201,29 @@ zknox_crypto_sign_epervier(unsigned char *sm, unsigned long long *smlen,
 	hint = Zf(hint_epervier)(s2, 9);
 	sig_len +=2;
 
-	memmove(sm + 2 + sizeof nonce, m, mlen);
+	memmove(sm + 2 + sizeof nonce, m, (size_t)mlen);
 	sm[0] = (unsigned char)(sig_len >> 8);
 	sm[1] = (unsigned char)sig_len;
 	memcpy(sm + 2, nonce, sizeof nonce);
-	memcpy(sm + 2 + (sizeof nonce) + mlen, esig, sig_len-2);
-	sm[2 + (sizeof nonce) + mlen + sig_len-2] = (unsigned char)(hint >> 8);
-	sm[2 + (sizeof nonce) + mlen + sig_len-1] = (unsigned char)hint;
+	memcpy(sm + 2 + (sizeof nonce) + (size_t)mlen, esig, sig_len-2);
+	sm[2 + (sizeof nonce) + (size_t)mlen + sig_len-2] = (unsigned char)(hint >> 8);
+	sm[2 + (sizeof nonce) + (size_t)mlen + sig_len-1] = (unsigned char)hint;
 	*smlen = 2 + (sizeof nonce) + mlen + sig_len;
-	return 0;
+	ret = 0;
+
+cleanup:
+	/*
+	 * Wipe the private key, the expanded key, the sampler seed and
+	 * the sampler state from the stack.
+	 */
+	Zf(secure_zero)(&tmp, sizeof tmp);
+	Zf(secure_zero)(f, sizeof f);
+	Zf(secure_zero)(g, sizeof g);
+	Zf(secure_zero)(F, sizeof F);
+	Zf(secure_zero)(G, sizeof G);
+	Zf(secure_zero)(seed, sizeof seed);
+	Zf(secure_zero)(&sc, sizeof sc);
+	return ret;
 }
 
 int
@@ -200,6 +243,13 @@ zknox_crypto_sign_open_epervier(unsigned char *m, unsigned long long *mlen,
 	TEMPALLOC int16_t s1[512], s2[512];
 	TEMPALLOC inner_shake256_context sc;
 	size_t sig_len, msg_len;
+
+	/*
+	 * Reject lengths that do not fit in a size_t.
+	 */
+	if (smlen > (unsigned long long)SIZE_MAX) {
+		return -1;
+	}
 
 	/*
 	 * Decode public key.
@@ -227,8 +277,15 @@ zknox_crypto_sign_open_epervier(unsigned char *m, unsigned long long *mlen,
 	/*
 	 * Decode signature.
 	 */
+	/*
+	 * The signature has a fixed length: header + s1, header + s2, and
+	 * the 2-byte hint. Check it before reading esig[].
+	 */
+	if (sig_len != EPERVIER_SIG_LEN) {
+		return -1;
+	}
 	esig = sm + 2 + NONCELEN + msg_len;
-	if (sig_len < 1 || esig[0] != 0x20 + 9 || esig[1025] != 0x20 + 9) {
+	if (esig[0] != 0x20 + 9 || esig[1025] != 0x20 + 9) {
 		return -1;
 	}
 

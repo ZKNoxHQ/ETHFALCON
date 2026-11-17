@@ -13,11 +13,12 @@ import "./ZKNOX_shake.sol";
 uint256 constant MASK_2BYTES = uint256(0xFFFF);
 
 /// @notice Hash message to a polynomial point using Keccak256-based PRNG optimized for EVM efficiency
-/// @dev Uses Keccak256 as XOF instead of SHAKE256 for gas cost reduction
-/// @dev Samples 16-bit values from Keccak256 output and accepts those < kq=61445, reducing to mod q=12289
+/// @dev Uses Keccak-CTR as XOF instead of SHAKE256 for gas cost reduction: state = keccak256(salt || message),
+///      then block_i = keccak256(state || uint64_be(i)) for i = 0, 1, ...
+/// @dev Samples 16-bit big-endian values from each block and accepts those < kq=61445, reducing to mod q=12289
 /// @dev This is NOT NIST-compliant but provides significant gas savings for EVM execution
-/// @param salt 40-byte salt value for domain separation
-/// @param msgHash 32-byte message hash
+/// @param salt 40-byte salt value
+/// @param msgHash the message, raw bytes of any length
 /// @return output Array of 512 coefficients in Z_q representing the hash-to-point result
 function hashToPointEVM(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory output) {
     output = new uint256[](n);
@@ -26,15 +27,21 @@ function hashToPointEVM(bytes memory salt, bytes memory msgHash) pure returns (u
 
     // Initial state
     state = keccak256(abi.encodePacked(salt, msgHash));
-    bytes memory extendedState = abi.encodePacked(state, uint64(0x00));
 
     assembly ("memory-safe") {
+        // allocate 64 bytes holding state (32 bytes) || counter (8 bytes, big-endian) || 24 bytes of padding,
+        // so that the 32-byte counter store below stays inside the allocation
+        let extendedState := mload(0x40)
+        mstore(0x40, add(extendedState, 64))
+        mstore(extendedState, state)
+        let extendedAdress := add(extendedState, 32)
+        mstore(extendedAdress, 0)
+
         let counter := 0
         let i := 0
         let offset := add(output, 32)
-        let extendedAdress := add(extendedState, 64)
         for {} lt(i, n) {} {
-            let buffer := keccak256(add(extendedState, 32), 40)
+            let buffer := keccak256(extendedState, 40)
             for { let j := 240 } lt(j, 666) { j := sub(j, 16) } {
                 let chunk := and(shr(j, buffer), 0xffff)
                 if lt(chunk, kq) {
@@ -68,13 +75,12 @@ function splitToHex(bytes32 x) pure returns (uint16[16] memory res) {
 }
 
 /// @notice Hash message to polynomial point using NIST-compliant SHAKE256 XOF
-/// @dev Implements NIST FIPS 205 hash-to-point using SHAKE256 as the extendable output function
-/// @dev Samples 16-bit values and accepts those < kq=61445, reducing mod q=12289
-/// @param salt 40-byte salt value for domain separation (note: salt and msgHash order swapped vs EVM version)
-/// @param msgHash 32-byte message hash
+/// @dev Implements the FIPS 206 (FN-DSA) / Falcon round 3 hash-to-point: SHAKE256(salt || message)
+/// @dev Samples 16-bit big-endian values and accepts those < kq=61445, reducing mod q=12289
+/// @param salt 40-byte salt value (absorbed first, as in hashToPointEVM)
+/// @param msgHash the message, raw bytes of any length
 /// @return Array of 512 coefficients in Z_q representing the hash-to-point result
 function hashToPointNIST(bytes memory salt, bytes memory msgHash) pure returns (uint256[] memory) {
-    // SALT AND MSG ARE SWAPPED!
     uint256[] memory hashed = new uint256[](512);
     uint256 i = 0;
     uint256 j = 0;

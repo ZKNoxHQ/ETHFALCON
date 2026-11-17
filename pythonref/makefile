@@ -12,6 +12,7 @@ install:
 test:
 	$(PYTHON) test.py
 	$(PYTHON) -m unittest discover -v
+	$(PYTHON) forgery.py
 	
 
 bench:

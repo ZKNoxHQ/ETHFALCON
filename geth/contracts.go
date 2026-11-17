@@ -24,11 +24,13 @@ import (
 	"maps"
 	"math"
 	"math/big"
+
 	"github.com/ZKNoxHQ/ETHFALCON/falcon"
 	"github.com/consensys/gnark-crypto/ecc"
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -37,7 +39,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/params"
 	"golang.org/x/crypto/ripemd160"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -1185,8 +1186,19 @@ func kZGToVersionedHash(kzg kzg4844.Commitment) common.Hash {
 	return h
 }
 
+// falconvrfy verifies a Falcon-512 signature in the NIST format.
+//
+// Input: abi.encode(bytes signedMessage, bytes message, bytes publicKey), where
+// signedMessage is the output of crypto_sign (2-byte signature length, 40-byte
+// nonce, message, compressed signature) and publicKey is the 897-byte NIST
+// encoding. Output: 32 bytes, 1 if the signature is valid for message under
+// publicKey, 0 otherwise. Malformed ABI input is an error; malformed keys or
+// signatures are a failed verification.
 type falconvrfy struct{}
 
+// RequiredGas returns a flat price. The verification cost grows with the
+// length of the signed message (it is hashed with SHAKE256); the price is not
+// length-dependent yet.
 func (c *falconvrfy) RequiredGas(input []byte) uint64 {
 	return 3000
 }
@@ -1199,44 +1211,37 @@ func mustNewBytesType() abi.Type {
 	return t
 }
 
+var falconvrfyArgs = abi.Arguments{
+	{Type: mustNewBytesType()},
+	{Type: mustNewBytesType()},
+	{Type: mustNewBytesType()},
+}
+
 func (f *falconvrfy) Run(input []byte) ([]byte, error) {
-	args := abi.Arguments{
-		{Type: mustNewBytesType()},
-		{Type: mustNewBytesType()},
-		{Type: mustNewBytesType()},
-	}
-
-
-	fmt.Printf("🔍 Input  (hex): %x\n", input)
-
-	decoded, err := args.Unpack(input)
-	if (err != nil){
+	decoded, err := falconvrfyArgs.Unpack(input)
+	if err != nil {
 		return nil, errors.New("invalid input ABI")
 	}
-	if (len(decoded) != 3 ){
+	if len(decoded) != 3 {
 		return nil, errors.New("not decoded 3 arguments")
 	}
 
 	sig, ok1 := decoded[0].([]byte)
 	msg, ok2 := decoded[1].([]byte)
 	pub, ok3 := decoded[2].([]byte)
-
-	fmt.Printf("🔍 Signature  (hex): %x\n", sig)
-	fmt.Printf("🔍 Message    (hex): %x\n", msg)
-	fmt.Printf("🔍 Public Key (hex): %x\n", pub)
-
 	if !ok1 || !ok2 || !ok3 {
 		return nil, errors.New("invalid input values")
 	}
 
-	ok, err := falcon.VerifySignature(sig, msg, pub)
-	output := []byte{0}
-	if err != nil {
-		output[0] = 0
+	output := make([]byte, 32)
+	// Reject wrong-length keys and signed messages shorter than the
+	// length+nonce header and signature header byte before reaching C.
+	// falcon.VerifySignature repeats these checks.
+	if len(pub) != falcon.PublicKeySize || len(sig) < 2+falcon.NonceSize+1 {
+		return output, nil
 	}
-	
-	if ok {
-		output[0] = 1
+	if ok, err := falcon.VerifySignature(sig, msg, pub); err == nil && ok {
+		output[31] = 1
 	}
-	return common.LeftPadBytes(output, 32), nil
+	return output, nil
 }

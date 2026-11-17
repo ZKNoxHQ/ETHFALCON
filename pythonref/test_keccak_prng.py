@@ -1,5 +1,9 @@
 import unittest
+from eth_hash import auto as eth_hash_auto
+from falcon import PublicKey, SecretKey, hash_to_point
+from keccak import KeccakHash
 from keccak_prng import KeccakPRNG
+from scripts.sign_KAT import sign_KAT
 
 # Values obtained from `./c/test_prng` in Zhenfei Zhang's repository:
 # https://github.com/zhenfeizhang/falcon-go/blob/main/c/test_prng
@@ -113,3 +117,75 @@ class TestKeccakPRNG(unittest.TestCase):
         prng2.update(b"Danette")
         prng2.flip()
         self.assertEqual(prng1.read(2) + prng1.read(2), prng2.read(4))
+
+    def test_long_input_matches_independent_keccak(self):
+        """
+        No input cap (audit L-6): a > 4096-byte input gives the same stream as
+        keccak256(input), then keccak256(state || uint64_be(counter)),
+        computed with two independent Keccak implementations.
+        """
+        salt = bytes(range(40))
+        message = bytes((7 * i + 3) % 256 for i in range(10000))
+        prng = KeccakPRNG()
+        prng.inject(salt)
+        for i in range(0, len(message), 1000):
+            prng.inject(message[i:i + 1000])
+        prng.flip()
+        output = prng.read(3) + prng.read(197)
+        for keccak256 in (eth_hash_keccak, pure_python_keccak):
+            self.assertEqual(output, reference_stream(salt + message, 200, keccak256))
+
+    def test_hash_to_point_long_message(self):
+        """hash_to_point(KeccakPRNG) on a long message matches hashToPointEVM's construction."""
+        salt = bytes(range(100, 140))
+        message = b"ETHFALCON" * 1000  # 9000 bytes
+        self.assertEqual(hash_to_point(512, message, salt, xof=KeccakPRNG),
+                         reference_hash_to_point_evm(salt, message, eth_hash_keccak))
+
+    def test_sign_verify_long_message(self):
+        """ETHFALCON signs and verifies a message larger than the old 4096-byte cap."""
+        f, g, F, G = (sign_KAT[512][0][k] for k in ("f", "g", "F", "G"))
+        sk = SecretKey(512, [f, g, F, G])
+        pk = PublicKey(512, sk.h)
+        message = bytes(5000)
+        sig = sk.sign(message, xof=KeccakPRNG)
+        self.assertTrue(pk.verify(message, sig, xof=KeccakPRNG))
+        self.assertFalse(pk.verify(b"", sig, xof=KeccakPRNG))
+
+
+def eth_hash_keccak(data):
+    return eth_hash_auto.keccak(data)
+
+
+def pure_python_keccak(data):
+    # keccak.py: numpy Keccak-f[1600], independent of pycryptodome
+    K = KeccakHash(rate=200 - (512 // 8), dsbyte=0x01)
+    K.absorb(data)
+    K.pad()
+    return K.squeeze(32)
+
+
+def reference_stream(data, length, keccak256):
+    state = keccak256(data)
+    out, counter = b"", 0
+    while len(out) < length:
+        out += keccak256(state + counter.to_bytes(8, "big"))
+        counter += 1
+    return out[:length]
+
+
+def reference_hash_to_point_evm(salt, message, keccak256, n=512, q=12289):
+    """Line-by-line port of hashToPointEVM (src/ZKNOX_HashToPoint.sol)."""
+    kq = (1 << 16) // q * q  # 61445
+    state = keccak256(salt + message)
+    output, counter = [], 0
+    while len(output) < n:
+        block = keccak256(state + counter.to_bytes(8, "big"))
+        for j in range(16):
+            chunk = int.from_bytes(block[2 * j:2 * j + 2], "big")
+            if chunk < kq:
+                output.append(chunk % q)
+                if len(output) == n:
+                    break
+        counter += 1
+    return output

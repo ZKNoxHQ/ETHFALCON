@@ -42,21 +42,34 @@ make geth
 
 - Run example with cast:
 
-    * generate example
+    * generate example (prints `SIG=…`, `MSG=…`, `PUB=…`)
 
 ```bash
-go run test_falconmodule.go
+cd ../test/go && go run test_falconmodule.go
  ```
-copy paste the result, then call the abi-encode on it.
 
-```bash
-cast abi-encode "falconvrfy(bytes,bytes,bytes)" $SIG $MSG $PUB
-``` 
     * run example
 
 ```bash
-cast call 0x0000000000000000000000000000000000000013 "$(cast abi-encode "falconvrfy(bytes,bytes,bytes)" "" --rpc-url http://localhost:8547)" --rpc-url http://localhost:8547 
+cast call 0x0000000000000000000000000000000000000013 "$(cast abi-encode "falconvrfy(bytes,bytes,bytes)" $SIG $MSG $PUB)" --rpc-url http://localhost:8547
  ```
 
-Where INPUT is a valid input for the falcon verification procedure, 0x13 is the precompile value (subject to change with next forks).
-It can be generated using the test/test_falconmodule.go
+0x13 is the precompile address (subject to change with next forks).
+
+## Precompile interface
+
+- Input: `abi.encode(bytes signedMessage, bytes message, bytes publicKey)` (no function selector).
+    * `signedMessage` is the NIST `crypto_sign` output: 2-byte signature length, 40-byte nonce, message, compressed signature (as returned by `falcon.SignMessage`).
+    * `publicKey` is the 897-byte NIST Falcon-512 public key.
+    * This is the plain NIST format, not the ETHFALCON/EPERVIER format used by the Solidity verifiers.
+- Output: 32 bytes, `1` if the signature is valid for `message` under `publicKey`, `0` otherwise. A wrong-length key, a truncated or malformed signature, or a message mismatch returns `0`. Input that is not valid ABI makes the call fail.
+- Gas: flat 3000 (`RequiredGas`), whatever the input length. The verification cost grows with the length of the signed message, which is hashed; the price does not reflect that yet.
+
+## Tests
+
+The Go binding tests live in `test/go`. Build the C library first (`make go` in `falcon/`), then:
+
+```bash
+cd test/go
+go test -race ./...
+```

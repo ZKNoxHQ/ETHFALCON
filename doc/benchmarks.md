@@ -20,9 +20,9 @@ Upon confirmation of the optimal algorithm for NTT, its critical parts have been
 
 | Function                   | Description               | gas cost | Tests Status |
 |------------------------|---------------------|---------------------|---------------------|
-| ZKNOX_falcon.verify       | NIST       | 3.9M | :white_check_mark:|
-| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.6 M | :white_check_mark:|
-| ZKNOX_epervier.verify       | Recover EVM friendly      | 1.5 M | :white_check_mark:|
+| ZKNOX_falcon.verify       | NIST       | 3.8M | :white_check_mark:|
+| ZKNOX_ethfalcon.verify       | EVM Friendly      | 1.4 M | :white_check_mark:|
+| ZKNOX_ethepervier.recover       | Recover EVM friendly      | 1.6 M | :white_check_mark:|
 
 
 

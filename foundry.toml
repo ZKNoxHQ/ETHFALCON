@@ -8,7 +8,9 @@ evm_version = "cancun"
 solc_version = "0.8.25"
 fs_permissions = [{ access = "read", path = "./test/" }]
 gas_limit = 72057594037927935  # 2^56 - 1 (JavaScript-friendly)
-ffi = true
+# ffi lets tests run arbitrary host commands; no test needs it. Use FOUNDRY_PROFILE=ffi for
+# test/ZKNOX_PythonSigner.sol, which signs through the Python reference implementation.
+ffi = false
 
 [profile.lite]
 optimizer = false
@@ -27,4 +29,8 @@ evm_version = "cancun"
 solc_version = "0.8.25"
 fs_permissions = [{ access = "read", path = "./test/" }]
 gas_limit = 72057594037927935
+ffi = false
+
+[profile.ffi]
+# opt-in profile for tests that call vm.ffi (e.g. test/ZKNOX_PythonSigner.sol); inherits [profile.default]
 ffi = true

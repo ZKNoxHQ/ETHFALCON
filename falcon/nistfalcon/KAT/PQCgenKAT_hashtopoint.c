@@ -180,11 +180,15 @@ int main()
          */
 
 #if ETHFALCON
-        inner_keccak256_init(&kc);
-        inner_keccak256_inject(&kc, nonce, sizeof nonce);
-        inner_keccak256_inject(&kc, m, mlen);
-        inner_keccak256_flip(&kc);
-        Zf(keccak_hash_to_point_vartime)(&kc, hm, 9);
+        if (inner_keccak256_init(&kc) != 0
+            || inner_keccak256_inject(&kc, nonce, sizeof nonce) != 0
+            || inner_keccak256_inject(&kc, m, mlen) != 0
+            || inner_keccak256_flip(&kc) != 0
+            || Zf(keccak_hash_to_point_vartime)(&kc, hm, 9) != 0)
+        {
+            printf("keccak hash-to-point failed\n");
+            return KAT_CRYPTO_FAILURE;
+        }
 #else
         inner_shake256_init(&sc);
         inner_shake256_inject(&sc, nonce, sizeof nonce);

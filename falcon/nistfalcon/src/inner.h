@@ -260,9 +260,19 @@ extern const uint8_t Zf(max_sig_bits)[];
  * point. This is the non-constant-time version, which may leak enough
  * information to serve as a stop condition on a brute force attack on
  * the hashed message (provided that the nonce value is known).
+ * Returned value is 0 on success, or the (negative) error code of
+ * inner_keccak256_extract() on failure.
  */
-void Zf(keccak_hash_to_point_vartime)(inner_keccak256_prng_ctx *kc,
-									  uint16_t *x, unsigned logn);
+int Zf(keccak_hash_to_point_vartime)(inner_keccak256_prng_ctx *kc,
+									 uint16_t *x, unsigned logn);
+
+/*
+ * Clear len bytes at p. The memset() call goes through a volatile
+ * function pointer so that the compiler cannot remove it, even when the
+ * buffer is a local variable that is not read afterwards. Used to wipe
+ * secret material (private key, seeds, PRNG state) before returning.
+ */
+void Zf(secure_zero)(void *p, size_t len);
 
 /*
  * From a SHAKE256 context (must be already flipped), produce a new

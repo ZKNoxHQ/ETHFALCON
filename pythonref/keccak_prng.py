@@ -5,17 +5,21 @@ import struct
 # https://github.com/zhenfeizhang/falcon-go/blob/main/c/keccak_prng.c
 
 
+# The input (salt || message) is absorbed incrementally, so there is no cap
+# on its length. This matches `hashToPointEVM` in src/ZKNOX_HashToPoint.sol:
+#   state   = keccak256(salt || message)
+#   block_i = keccak256(state || uint64_be(i)),  i = 0, 1, ...
+
 # Constants
-MAX_BUFFER_SIZE = 4096  # Increased to handle large KAT messages (max ~1472 bytes + salt)
 KECCAK_OUTPUT = 32  # Keccak output size in bytes
 
 
 class KeccakPRNG:
     def __init__(self):
         """ Initialize a Keccak PRNG context. """
-        self.buffer = bytearray(MAX_BUFFER_SIZE)
+        # Streaming absorption of the input (no length limit)
+        self.absorber = keccak.new(digest_bytes=KECCAK_OUTPUT)
         self.state = bytearray(KECCAK_OUTPUT)
-        self.buffer_len = 0
         self.counter = 0
         self.finalized = False
 
@@ -33,22 +37,16 @@ class KeccakPRNG:
         if self.finalized:
             raise ValueError("Cannot inject after finalizing")
 
-        if len(data) + self.buffer_len > MAX_BUFFER_SIZE:
-            raise ValueError("Buffer overflow")
-
-        self.buffer[self.buffer_len:self.buffer_len + len(data)] = data
-        self.buffer_len += len(data)
+        self.absorber.update(bytes(data))
 
     def flip(self):
         """ Finalize the PRNG state and prepare for output generation. """
         if self.finalized:
             raise ValueError("Already finalized")
 
-        keccak_ctx = keccak.new(digest_bytes=KECCAK_OUTPUT)
-        keccak_ctx.update(self.buffer[:self.buffer_len])
-
         # Generate initial state
-        self.state = keccak_ctx.digest()
+        self.state = self.absorber.digest()
+        self.absorber = None
         self.finalized = True
 
         # Reset output buffer

@@ -69,7 +69,18 @@ void Zf(hash_to_point_vartime)(
 }
 
 /* see inner.h */
-void Zf(keccak_hash_to_point_vartime)(
+void Zf(secure_zero)(void *p, size_t len)
+{
+	static void *(*const volatile memset_v)(void *, int, size_t) = &memset;
+
+	if (p != NULL && len != 0)
+	{
+		memset_v(p, 0, len);
+	}
+}
+
+/* see inner.h */
+int Zf(keccak_hash_to_point_vartime)(
 	inner_keccak256_prng_ctx *kc, uint16_t *x, unsigned logn)
 {
 	/*
@@ -89,8 +100,13 @@ void Zf(keccak_hash_to_point_vartime)(
 	{
 		uint8_t buf[2];
 		uint32_t w;
+		int r;
 
-		inner_keccak256_extract(kc, (void *)buf, sizeof buf);
+		r = inner_keccak256_extract(kc, (void *)buf, sizeof buf);
+		if (r != 0)
+		{
+			return r;
+		}
 		w = ((unsigned)buf[0] << 8) | (unsigned)buf[1];
 		if (w < 61445)
 		{
@@ -102,6 +118,7 @@ void Zf(keccak_hash_to_point_vartime)(
 			n--;
 		}
 	}
+	return 0;
 }
 
 /* see inner.h */
