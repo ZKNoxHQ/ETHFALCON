@@ -3,12 +3,15 @@
 #include "keccak256.h"
 
 #define KECCAK256_OUTPUT 32
-#define MAX_BUFFER_SIZE 4096 // Adjust based on your needs
 
+/*
+ * Input is absorbed incrementally into a Keccak-256 context, so there is
+ * no limit on the total input length. The output is identical to hashing
+ * the concatenation of all injected data in one call.
+ */
 typedef struct
 {
-    uint8_t buffer[MAX_BUFFER_SIZE]; // Input buffer
-    size_t buffer_len;               // Length of data in input buffer
+    SHA3_CTX absorb;                 // Keccak-256 absorbing state (input phase)
     uint8_t state[KECCAK256_OUTPUT]; // Current state
     uint64_t counter;                // Output counter
     int finalized;                   // Flag indicating if state is finalized
