@@ -6,14 +6,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.25;
 
-import {Test, console} from "forge-std/Test.sol";
 import "./ZKNOX_falcon_utils.sol";
 import "./ZKNOX_NTT_falcon.sol";
 import "./ZKNOX_HashToPoint.sol";
 
 /// @title ZKNOX_epervier
 /// @notice A contract to verify FALCON signatures with public key recovery
-/// @dev The format of function is compacted, not compressed, for KATS verification look at dedicated ZKNOX_falconKATS.sol
+/// @dev The format of function is compacted, not compressed. Uses the SHAKE256 (NIST) hash-to-point.
 
 /// @custom:experimental This library is not audited yet, do not use in production.
 contract ZKNOX_epervier {
@@ -23,11 +22,14 @@ contract ZKNOX_epervier {
 
     /// @notice Compute the  falcon recover function
 
-    /// @param msgs the message to be signed
-    /// @param salt the message to be signed, expected length is 40 bytes
+    /// @dev Reverts (instead of returning address(0) like ecrecover) on malformed input, out-of-range
+    ///      coefficients, a too large norm or a wrong hint. No domain (chainId, contract, nonce) is bound:
+    ///      callers must include it in the signed message.
+    /// @param msgs the message, raw bytes of any length
+    /// @param salt the signature salt (nonce), expected length is 40 bytes
     /// @param cs1 first part of the signature in Compacted representation (see IO part of README for encodings specification), expected length is 32 uint256
     /// @param cs2 second part of the signature in Compacted representation (see IO part of README for encodings specification), expected length is 32 uint256
-    /// @param hint hinted part of s2^_1 (see specification)
+    /// @param hint the scalar (prod_i ntt(s2)_i)^-1 mod q, used to batch-invert ntt(s2); must be in [1, q)
     /// @return result the address recovered
 
     function recover(bytes memory msgs, bytes memory salt, uint256[] memory cs1, uint256[] memory cs2, uint256 hint)
@@ -38,6 +40,9 @@ contract ZKNOX_epervier {
         if (salt.length != 40) revert("wrong salt length"); //CVETH-2025-080201: control salt length to avoid potential forge
         if (cs1.length != 32) revert("Invalid s1 length"); //"Invalid s1 length"
         if (cs2.length != 32) revert("Invalid s2 length"); //"Invalid s2 length"
+        // the hint is only used through mulmod(., q): require its canonical representative, otherwise
+        // hint + k*q would give ~2^242 encodings of the same signature. hint = 0 is never a valid inverse.
+        if (hint == 0 || hint >= q) revert("invalid hint");
 
         uint256[] memory s1 = _ZKNOX_NTT_Expand(cs1); //avoiding another memory declaration
         uint256[] memory s2 = _ZKNOX_NTT_Expand(cs2); //avoiding another memory declaration

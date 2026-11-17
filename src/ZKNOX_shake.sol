@@ -259,26 +259,26 @@ function shakeInit() pure returns (CtxShake memory ctx) {
 }
 
 /// @notice Updates SHAKE context with new input data
-/// @dev If currently squeezing, performs permutation before absorbing. Sets context to absorbing mode.
+/// @dev SHAKE256 does not allow absorbing after the padding: reverts if the context is already squeezing.
 /// @param ctx Current SHAKE context
 /// @param input Data to absorb
 /// @return ctxout Updated context after absorption
 function shakeUpdate(CtxShake memory ctx, bytes memory input) pure returns (CtxShake memory ctxout) {
-    if (ctx.direction == _SPONGE_SQUEEZING) {
-        (ctx.buff, ctx.state) = shakePermute(ctx.buff, ctx.state);
-    }
+    if (ctx.direction == _SPONGE_SQUEEZING) revert("SHAKE: absorb after squeeze");
     ctxout.direction = _SPONGE_ABSORBING;
     (ctxout.i, ctxout.buff, ctxout.state) = shakeAbsorb(ctx.i, ctx.buff, ctx.state, input);
     return ctxout;
 }
 
 /// @notice Squeezes output bytes from the SHAKE sponge
-/// @dev Extracts n bytes from the current state, performing permutation when needed
+/// @dev Extracts n bytes from the current state, performing permutation when needed.
+///      Reverts if the context has not been padded (shakePad / shakeDigest) first.
 /// @param ctx Current SHAKE context
 /// @param n Number of bytes to squeeze
 /// @return ctxout Updated context after squeezing
 /// @return output Squeezed bytes
 function shakeSqueeze(CtxShake memory ctx, uint256 n) pure returns (CtxShake memory ctxout, bytes memory) {
+    if (ctx.direction != _SPONGE_SQUEEZING) revert("SHAKE: squeeze before pad");
     bytes memory output = new bytes(n);
     uint256 tosqueeze = n;
     uint256 offset = 0;
@@ -344,15 +344,18 @@ function shakePermute(uint8[200] memory buf, uint64[25] memory state)
 }
 
 /// @notice Applies SHAKE256 padding to the buffer
-/// @dev Adds domain separation byte 0x1f and padding byte 0x80, then permutes
+/// @dev Adds domain separation byte 0x1f and padding byte 0x80, then permutes and switches the context
+///      to squeezing. Reverts if the context is already squeezing (double padding).
 /// @param ctx Current SHAKE context
 /// @return ctxout Context after padding with position reset to 0
 function shakePad(CtxShake memory ctx) pure returns (CtxShake memory ctxout) {
+    if (ctx.direction == _SPONGE_SQUEEZING) revert("SHAKE: already padded");
     ctx.buff[ctx.i] ^= 0x1f;
     ctx.buff[_RATE - 1] ^= 0x80;
     (ctx.buff, ctx.state) = shakePermute(ctx.buff, ctx.state);
 
     ctx.i = 0;
+    ctx.direction = _SPONGE_SQUEEZING;
 
     return ctx;
 }
@@ -363,13 +366,8 @@ function shakePad(CtxShake memory ctx) pure returns (CtxShake memory ctxout) {
 /// @param size8 Number of bytes to output
 /// @return output Digest of requested size
 function shakeDigest(CtxShake memory ctx, uint256 size8) pure returns (bytes memory output) {
-    output = new bytes(size8);
     if (ctx.direction == _SPONGE_ABSORBING) {
-        ctx.buff[ctx.i] ^= 0x1f;
-        ctx.buff[_RATE - 1] ^= 0x80;
-        (ctx.buff, ctx.state) = shakePermute(ctx.buff, ctx.state);
-
-        ctx.i = 0;
+        ctx = shakePad(ctx);
     }
     (, output) = shakeSqueeze(ctx, size8);
 }

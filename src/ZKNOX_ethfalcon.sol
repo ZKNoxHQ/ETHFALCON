@@ -32,20 +32,31 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         return true;
     }
 
+    /// @notice Stores a public key in an SSTORE2 data contract and returns its ERC-7913 key bytes
+    /// @dev Permissionless: anyone can write any valid key. The returned 20-byte pointer is the key
+    ///      identifier used by `verify(bytes,bytes32,bytes)`, so the account must store it itself; a key
+    ///      is only as trusted as the pointer the account stores. The same ntth can sit behind several
+    ///      pointers: deduplicate on keccak256(ntth) if key uniqueness matters.
+    /// @param pubkey abi.encode(uint256[] ntth), ntth being the public key in the NTT domain, compacted
+    ///        (32 words of 16 coefficients of 16 bits), each coefficient < q. Reverts otherwise.
+    /// @return the 20-byte address of the SSTORE2 pointer (abi.encodePacked(address))
     function setKey(bytes memory pubkey) external returns (bytes memory) {
+        if (!falcon_checkKeyEncoding(pubkey)) revert("invalid public key");
         address pointer = SSTORE2.write(pubkey);
         return abi.encodePacked(pointer);
     }
 
-    /// @notice Compute the  ethfalcon verification function
-
-    /// @param h the hash of message to be signed, expected length is 32 bytes
-    /// @param salt the message to be signed, expected length is 40 bytes
+    /// @notice Compute the ethfalcon (Keccak-CTR hash-to-point) verification function
+    /// @dev Reverts on malformed lengths (salt, s2, ntth); returns false on an invalid signature or on a
+    ///      public key with a coefficient >= q. No domain (chainId, contract, nonce) is bound by the
+    ///      verifier: callers must include it in the signed message.
+    /// @param h the message, raw bytes of any length (it is hashed together with the salt by the hash-to-point)
+    /// @param salt the signature salt (nonce), expected length is 40 bytes
     /// @param s2 second part of the signature in Compacted representation (see IO part of README for encodings specification), expected length is 32 uint256
-    /// @param ntth public key in the ntt domain, compacted 16  coefficients of 16 bits per word
+    /// @param ntth public key in the ntt domain, compacted 16 coefficients of 16 bits per word, each coefficient < q
     /// @return result boolean result of the verification
     function verify(
-        bytes memory h, //a 32 bytes hash
+        bytes memory h, // the message, any length
         bytes memory salt, // compacted signature salt part
         uint256[] memory s2, // compacted signature s2 part
         uint256[] memory ntth // public key, compacted representing coefficients over 16 bits
@@ -54,95 +65,55 @@ contract ZKNOX_ethfalcon is ISigVerifier {
         pure
         returns (bool result)
     {
-        // if (h.length != 32) return false;
-        if (salt.length != 40) {
-            revert("invalid salt length");
-            //return false;
-        } //CVETH-2025-080201: control salt length to avoid potential forge
-        if (s2.length != falcon_S256) {
-            revert("invalid s2 length");
-            //return false;
-        } //"Invalid salt length"
-        if (ntth.length != falcon_S256) {
-            revert("invalid ntth length");
-            //return false;
-        } //"Invalid public key length"
-
-        uint256[] memory hashed = hashToPointEVM(salt, h);
-
-        result = falcon_core(s2, ntth, hashed);
-        //if (result == false) revert("wrong sig");
-
-        return result;
+        return _verify(h, salt, s2, ntth);
     }
 
+    /// @notice ERC-7913 verification entry point
+    /// @dev Reverts if `_pubkey` is not exactly the 20-byte address of a valid `setKey` pointer, or if `_sig`
+    ///      is not exactly salt (40 bytes) || s2 (32 words). Returns 0xFFFFFFFF on an invalid signature.
+    /// @param _pubkey 20-byte address of the SSTORE2 pointer returned by `setKey`
+    /// @param _digest the 32-byte message that was signed
+    /// @param _sig salt (40 bytes) || s2 (32 uint256 words, compacted)
+    /// @return ISigVerifier.verify.selector if the signature is valid, 0xFFFFFFFF otherwise
     function verify(bytes calldata _pubkey, bytes32 _digest, bytes calldata _sig) external view returns (bytes4) {
         //enforce the canonical encoding: salt (40 bytes) || s2 (32 words of 32 bytes).
-        //floor division below would otherwise accept 1 to 31 trailing garbage bytes,
+        //floor division would otherwise accept 1 to 31 trailing garbage bytes,
         //yielding up to 32 distinct accepted encodings of the same signature.
         if (_sig.length != SALT_LEN + 32 * falcon_S256) {
             revert("invalid signature length");
         }
 
-        address pkContractAddress;
-        assembly {
-            pkContractAddress := shr(96, calldataload(_pubkey.offset))
+        uint256[] memory ntth = falcon_loadKeyPointer(_pubkey);
+
+        bytes memory salt = _sig[:SALT_LEN];
+        uint256[] memory s2 = new uint256[](falcon_S256);
+        assembly ("memory-safe") {
+            calldatacopy(add(s2, 32), add(_sig.offset, SALT_LEN), mul(32, falcon_S256))
         }
 
-        uint256[] memory ntth = abi.decode(SSTORE2.read(pkContractAddress), (uint256[]));
-
-        bytes memory digest = abi.encodePacked(_digest);
-        bytes memory sig = _sig;
-
-        uint256 saltPtr;
-        uint256 s2Ptr;
-
-        assembly {
-            // === Salt ===
-            let freePtr := mload(0x40)
-            saltPtr := freePtr
-            mstore(saltPtr, SALT_LEN)
-            let src := add(sig, 32)
-            let dst := add(saltPtr, 32)
-            for { let i := 0 } lt(i, SALT_LEN) { i := add(i, 32) } {
-                mstore(add(dst, i), mload(add(src, i)))
-            }
-
-            let saltAllocSize := and(add(SALT_LEN, 31), not(31))
-            freePtr := add(freePtr, add(32, saltAllocSize))
-
-            // === s2 ===
-            let s2DataStart := add(src, SALT_LEN)
-            let s2LengthSlot := sub(s2DataStart, 32)
-
-            let savedPtr := freePtr
-            mstore(savedPtr, mload(sig))
-            mstore(add(savedPtr, 32), mload(s2LengthSlot))
-            mstore(0x40, add(savedPtr, 64))
-
-            mstore(s2LengthSlot, div(sub(mload(sig), SALT_LEN), 32))
-            s2Ptr := s2LengthSlot
-        }
-
-        bool result = this.verify(digest, _ptrToBytes(saltPtr), _ptrToUint256Array(s2Ptr), ntth);
-
-        assembly {
-            let savedPtr := sub(mload(0x40), 64)
-            mstore(sig, mload(savedPtr))
-            mstore(add(sig, SALT_LEN), mload(add(savedPtr, 32)))
-        }
-
-        if (result) {
+        if (_verify(abi.encodePacked(_digest), salt, s2, ntth)) {
             return ISigVerifier.verify.selector;
         }
         return 0xFFFFFFFF;
     }
 
-    function _ptrToBytes(uint256 ptr) private pure returns (bytes memory result) {
-        assembly { result := ptr }
-    }
+    function _verify(bytes memory h, bytes memory salt, uint256[] memory s2, uint256[] memory ntth)
+        internal
+        pure
+        returns (bool)
+    {
+        if (salt.length != SALT_LEN) {
+            revert("invalid salt length");
+        } //CVETH-2025-080201: control salt length to avoid potential forge
+        if (s2.length != falcon_S256) {
+            revert("invalid s2 length");
+        }
+        if (ntth.length != falcon_S256) {
+            revert("invalid ntth length");
+        }
 
-    function _ptrToUint256Array(uint256 ptr) private pure returns (uint256[] memory result) {
-        assembly { result := ptr }
+        uint256[] memory hashed = hashToPointEVM(salt, h);
+
+        return falcon_core(s2, ntth, hashed);
     }
 } //end of contract ZKNOX_falcon_compact

@@ -346,6 +346,7 @@ contract ZKNOX_NTT {
     }
 
     function ZKNOX_NTT_Expand(uint256[] memory a) internal pure returns (uint256[] memory b) {
+        require(a.length == 32, "invalid length");
         b = new uint256[](512);
         /*
         for (uint256 i = 0; i < 32; i++) {
@@ -371,6 +372,7 @@ contract ZKNOX_NTT {
     }
 
     function ZKNOX_NTT_Compact(uint256[] memory a) internal pure returns (uint256[] memory b) {
+        require(a.length == 512, "invalid length");
         b = new uint256[](32);
 
         /*
@@ -384,7 +386,8 @@ contract ZKNOX_NTT {
             for { let i := 0 } gt(512, i) { i := add(i, 1) } {
                 aa := add(aa, 32)
                 let bi := add(bb, mul(32, shr(4, i))) //shr(4,i)*32 !=shl(1,i)
-                mstore(bi, xor(mload(bi), shl(shl(4, and(i, 0xf)), mload(aa))))
+                // mask to 16 bits: an out-of-range input must not spill into the neighbouring coefficients
+                mstore(bi, xor(mload(bi), shl(shl(4, and(i, 0xf)), and(mload(aa), 0xffff))))
             }
         }
 

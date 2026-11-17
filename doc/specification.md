@@ -68,7 +68,7 @@ Those function being non standard, the  code provided by authors is the specific
   </tr>
  </tr>
   <td> EPERVIER </td>
-  <td> Keccak-CTR (WIP) </td>
+  <td> SHAKE (ZKNOX_epervier); Keccak-CTR for ETHEPERVIER (ZKNOX_ethepervier) </td>
   <td> Keccak(NTT(x)) </td>
   </tr>
 
@@ -124,23 +124,25 @@ The performance improvement brought by ZKNOX to this version comes from :
 
 **Optimization of FalconRec.**
 
-In order to optimize the verification of FalconRec, we use a classical trick in ZK implementations by providing $s_2^{-1}$ as an extra value (a hint) in the calldata, in the NTT domain (i.e. we provide `ntt(s2Inverse)`). Then, the verifier needs to check that the hint is indeed the inverse of $s_2$:
+In order to optimize the verification of FalconRec, we use a classical trick in ZK implementations by providing an inversion hint as an extra value in the calldata. Conceptually the hint is $ntt(s_2^{-1})$, the coefficient-wise inverse of $ntt(s_2)$. To save calldata, the contracts take a single scalar instead:
+$$hint = \left(\prod_{i=0}^{511} ntt(s_2)_i\right)^{-1} \bmod q, \quad 0 < hint < q,$$
+from which the verifier rebuilds $σ_4 = ntt(s_2^{-1})$ with prefix/suffix products (Montgomery's batch inversion: $ntt(s_2^{-1})_i = hint\cdot\prod_{j\neq i} ntt(s_2)_j$). Then, the verifier needs to check that the rebuilt vector is indeed the inverse of $ntt(s_2)$:
 - The public key remains $pk = H(h)$ for some collision-resistant hash function $H$;
-- The signature becomes $σ  =(s_1,s_2,r,ntt(s_2^{-1}))$,
+- The signature becomes $σ = (s_1, s_2, r, hint)$, and $σ_4$ denotes the vector rebuilt from $hint$,
 - The verification splits as:
-  - $ntt(σ_2)\cdot σ_4 == ntt(1)$,
+  - $ntt(σ_2)\cdot σ_4 == ntt(1)$ (this fails if $ntt(s_2)$ has a zero coefficient or if the hint is wrong),
   - $(σ_1,σ_2)$ is short,
   - $pk==H(intt(σ_4\cdot ntt(HashToPoint(σ_3\mid\mid m)-σ_1)))$.
 
 Finally, the cost of FalconRec verification is dominated by **2NTT + 1iNTT** (1 NTT in step 1, and the rest in step 3).
 
-Note that the check of step one is done in the NTT domain, where $ntt(1)$ is the constant equal to 1 at every poition. It is a simple equality test once $ntt(σ_2)$ is computed.
+Note that the check of step one is done in the NTT domain, where $ntt(1)$ is the constant equal to 1 at every position. It is a simple equality test once $ntt(σ_2)$ and $σ_4$ are computed. The contracts require $0 < hint < q$ so that each signature has a single encoding.
 
 **Moving the public key in the NTT domain.**
 
 We present here a modification of the public key in order to reduce the verification cost. The public key is moved in the NTT domain in order to save an iNTT in the FalconRec verification. Epervier is summarized as follows:
 - Public key: $pk=H(ntt(h))$ for some collision-resistant hash function $H$;
-- Signature: $σ = (s_1, s_2, r, ntt(s_2^{-1}))$ 
+- Signature: $σ = (s_1, s_2, r, hint)$ with $hint = (\prod_i ntt(s_2)_i)^{-1} \bmod q$, from which $σ_4 = ntt(s_2^{-1})$ is rebuilt as above
 - The verifier accepts the signatures if and only if:
     - $ntt(σ_2)\cdot σ_4==ntt(1)$;
     - $(σ_1,σ_2)$ is short;
@@ -161,8 +163,8 @@ We claim that the interest of EPERVIER goes beyond Ethereum ecosystem. For hardw
 
 <img width="2200" height="1626" alt="image" src="https://github.com/user-attachments/assets/108d9bdb-02c7-4ab1-be54-46bd3ed2f534" />
 
-The keccak-CTR PRNG is a minimalistic keccak in CTR mode, where:
-- the state is initialized has keccak(message,salt)
-- the i-th output block is keccak(state,i), where i is encoding on 1 byte
-- each 16-bit chunk output is taken from MSB to LSB in the output chain, with rejection of each chunk greater or equal to 61445.
+The keccak-CTR PRNG is a minimalistic keccak in CTR mode (`hashToPointEVM` in `src/ZKNOX_HashToPoint.sol`, `keccak_prng.py` in Python, `keccak_prng.c` in C), where:
+- the state is initialized as `state = keccak256(salt || message)` (40-byte salt first, then the raw message bytes),
+- the i-th output block (i = 0, 1, ...) is `keccak256(state || i)`, where i is encoded on 8 bytes, big-endian,
+- each 16-bit chunk output is taken from MSB to LSB in the output block, with rejection of each chunk greater or equal to 61445.
 - if lesser than 61445, the chunk is reduced modulo q (12289)
