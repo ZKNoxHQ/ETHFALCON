@@ -1,0 +1,14 @@
+{
+  "name": "ethfalcon-noble-signer",
+  "private": true,
+  "type": "module",
+  "description": "FALCON-512 signer for ETHFALCON on @noble/post-quantum, byte-compatible with falcon/falcon.js",
+  "main": "zknox_falcon.mjs",
+  "scripts": {
+    "test": "node test_zknox_falcon.mjs"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "0.7.1",
+    "@noble/hashes": "2.4.0"
+  }
+}
